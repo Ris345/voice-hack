@@ -154,7 +154,8 @@ def run_turn(
     if _goodbye_signal(user_speech):
         user_content += "\n[Patient is signalling they want to end the call]"
 
-    messages = history + [{"role": "user", "content": user_content}]
+    clean_history = [m for m in history if m.get("content", "").strip()]
+    messages = clean_history + [{"role": "user", "content": user_content}]
 
     system = _SYSTEM
     if _learnings:
