@@ -20,11 +20,17 @@ from fastapi.responses import FileResponse, PlainTextResponse
 
 import agent
 import backend_client
+import judge_client
 import patients
 import sessions
 import tts
 
 app = FastAPI()
+
+@app.on_event("startup")
+def startup():
+    learnings = judge_client.fetch_learnings()
+    agent.set_learnings(learnings)
 
 BASE_URL = os.environ.get("BASE_URL", "http://localhost:8000")
 GATHER_URL = f"{BASE_URL}/voice/gather"
@@ -199,10 +205,16 @@ async def status(
 
 
 def _report_call_result(session: dict | None) -> None:
-    """Send the conversation outcome to the backend (idempotent there):
-    AI-written summary + wellness note + full turn-by-turn transcript."""
+    """Send the conversation outcome to the backend (AI summary + wellness
+    note + full transcript) and to the judge agent for quality learnings."""
     if not session:
         return
+    judge_client.submit_call(
+        history=session.get("history", []),
+        patient_name=session.get("patientName", ""),
+        med_summary=session.get("medSummary", ""),
+        notes=session.get("notes", ""),
+    )
     med_status = session.get("medStatus", "unknown")
     meds_confirmed = {"taken": True, "missed": False}.get(med_status)
     name = session.get("patientName", "the patient")

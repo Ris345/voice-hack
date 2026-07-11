@@ -63,6 +63,51 @@ def trigger_call(body: TriggerCallIn):
     return {"call_log_id": call_log["id"], "call_sid": call.sid}
 
 
+class InvokeCallIn(BaseModel):
+    phone: str          # E.164 e.g. +19176559764
+    name: str = "Friend"
+
+
+@app.post("/calls/invoke")
+def invoke_call(body: InvokeCallIn):
+    """Demo endpoint — trigger a call to any phone number directly.
+    Looks up existing senior by phone; creates a minimal record if unknown."""
+    phone = body.phone if body.phone.startswith("+") else f"+1{body.phone}"
+
+    rows = supabase().table("seniors").select("id").eq("phone", phone).execute().data
+    if rows:
+        senior_id = rows[0]["id"]
+    else:
+        senior_id = supabase().table("seniors").insert({
+            "name": body.name,
+            "phone": phone,
+        }).execute().data[0]["id"]
+        # link to the first caregiver as primary so escalation has a target
+        caregiver_id = supabase().table("caregivers").select("id").limit(1).execute().data[0]["id"]
+        supabase().table("care_relationships").insert({
+            "senior_id": senior_id,
+            "caregiver_id": caregiver_id,
+            "is_primary": True,
+        }).execute()
+
+    call_log = supabase().table("call_logs").insert(
+        {"senior_id": senior_id, "status": "initiated"}
+    ).execute().data[0]
+
+    twiml_url = settings.voice_agent_twiml_url or f"{settings.public_base_url}/twilio/voice"
+    call = _twilio.calls.create(
+        to=phone,
+        from_=settings.twilio_from_number,
+        url=f"{twiml_url}?call_log_id={call_log['id']}",
+        status_callback=f"{settings.public_base_url}/twilio/status-callback",
+        status_callback_event=["completed"],
+    )
+    supabase().table("call_logs").update({"twilio_call_sid": call.sid}).eq(
+        "id", call_log["id"]
+    ).execute()
+    return {"call_log_id": call_log["id"], "call_sid": call.sid, "to": phone}
+
+
 class CallResultIn(BaseModel):
     transcript_summary: str
     meds_confirmed: bool | None = None

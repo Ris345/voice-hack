@@ -13,6 +13,12 @@ import anthropic
 
 _client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 _MODEL = "claude-sonnet-4-6"
+_learnings: list[str] = []
+
+
+def set_learnings(lessons: list[str]) -> None:
+    global _learnings
+    _learnings = lessons
 
 _SYSTEM = """You are Emily from Pill Buddy, a warm, caring companion who calls elderly \
 patients for a brief daily check-in. Introduce yourself as "Emily from Pill Buddy" and \
@@ -127,10 +133,14 @@ def run_turn(
 
     messages = history + [{"role": "user", "content": user_content}]
 
+    system = _SYSTEM
+    if _learnings:
+        system += "\n\nLESSONS FROM PREVIOUS CALLS (apply these):\n" + "\n".join(f"- {l}" for l in _learnings)
+
     resp = _client.messages.create(
         model=_MODEL,
         max_tokens=300,
-        system=_SYSTEM,
+        system=system,
         messages=messages,
     )
     raw = resp.content[0].text
