@@ -19,6 +19,16 @@ logging.basicConfig(level=logging.INFO)
 app = FastAPI(title="Pill Buddy Backend")
 
 
+@app.middleware("http")
+async def _no_cache_portal(request, call_next):
+    """The portal is a single evolving HTML file — stale browser cache has
+    repeatedly shipped judges old JS. Force revalidation on every load."""
+    resp = await call_next(request)
+    if request.url.path in ("/", "/index.html", "/design-board.html"):
+        resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 @app.on_event("startup")
 async def _start_scheduler():
     from .services.scheduler import scheduler_loop
