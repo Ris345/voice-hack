@@ -190,7 +190,7 @@ async function renderSenior(id) {
   const [{ data: meds }, { data: calls }, { data: rels }, { data: reminders }, { data: actions }] = await Promise.all([
     sb.from("medications").select("*, schedules(*)").eq("senior_id", id),
     sb.from("call_logs").select("*").eq("senior_id", id).order("started_at", { ascending: false }).limit(25),
-    sb.from("care_relationships").select("relationship, is_primary, caregivers(name)").eq("senior_id", id),
+    sb.from("care_relationships").select("relationship, is_primary, caregivers(id, name, phone, email)").eq("senior_id", id),
     sb.from("reminders").select("*").eq("senior_id", id).eq("status","pending").order("due_at"),
     sb.from("action_items").select("*").eq("senior_id", id).order("created_at", { ascending: false }).limit(20),
   ]);
@@ -218,7 +218,10 @@ async function renderSenior(id) {
     <div class="row" style="align-items:flex-start">💊 Prescriptions:</div>
     ${(meds||[]).map(m=>`<div class="row small" style="margin-left:24px">${esc(m.name)} ${esc(m.dosage)}${m.instructions?` — ${esc(m.instructions)}`:""}</div>`).join("") || '<div class="muted small" style="margin-left:24px">none on file</div>'}
     ${s.notes ? `<div class="row small">📝 ${esc(s.notes)}</div>` : ""}
-    <div class="row small">Care team: ${(rels||[]).map(r=>`${esc(r.caregivers.name)} (${esc(r.relationship)}${r.is_primary?", primary":""})`).join(", ")}</div>
+    <div class="row" style="align-items:flex-start">👥 Care team:</div>
+    ${(rels||[]).map(r=>`<div class="row small" style="margin-left:24px">
+      ${esc(r.caregivers.name)} — ${esc(r.relationship)}${r.is_primary?' <span class="badge primary">primary</span>':""}
+      · ${phoneHtml(r.caregivers.phone, "cg-"+r.caregivers.id)}${r.caregivers.email?` · ${esc(r.caregivers.email)}`:""}</div>`).join("")}
   </div>
 
   <h2>Suggested for you ✨ <span class="small muted" style="font-weight:400">from Emily's conversations</span></h2>

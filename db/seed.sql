@@ -3,21 +3,27 @@
 -- before the demo so calls/WhatsApp actually reach the people on stage.
 
 insert into caregivers (id, name, phone, email) values
-  ('c0000000-0000-0000-0000-000000000001', 'Grandson', '+19176559764', 'grandson@demo.com'),
-  ('c0000000-0000-0000-0000-000000000002', 'Marcus (son)', '+15550002002', null);
+  ('c0000000-0000-0000-0000-000000000001', 'Rishav', '+19176559764', 'grandson@demo.com'),
+  ('c0000000-0000-0000-0000-000000000002', 'Marcus (son)', '+15550002002', null),
+  ('c0000000-0000-0000-0000-000000000003', 'Priya (daughter)', '+15550002003', 'priya@demo.com');
 
-insert into seniors (id, name, phone, grandkid_names, notes) values
+insert into seniors (id, name, phone, grandkid_names, notes, date_of_birth, conditions, allergies, primary_doctor) values
   ('a0000000-0000-0000-0000-000000000001', 'Abhinav', '+19293312368',
-   '{Grandson}',
-   'Suffering from amnesia — often forgets whether he has taken his medication today. Be extra gentle and patient; confirm each medication clearly.'),
+   '{Rishav}',
+   'Suffering from amnesia — often forgets whether she has taken her medication today. Be extra gentle and patient; confirm each medication clearly. Loves her garden and watches Jeopardy every night.',
+   '1948-03-14',
+   '{Hypertension,"Type 2 diabetes","Mild amnesia — memory lapses","Osteoarthritis (right knee)"}',
+   '{Penicillin}',
+   'Dr. Patel — Riverside Family Medicine'),
   ('a0000000-0000-0000-0000-000000000002', 'Harold Chen', '+15550001002',
    '{Lily}',
-   'Retired mailman, walks every morning. Proud of Lily''s soccer season.');
+   'Retired mailman, walks every morning. Proud of Lily''s soccer season.',
+   null, '{}', '{}', null);
 
 -- who tracks whom; exactly one primary per senior (primary gets the WhatsApp)
 insert into care_relationships (senior_id, caregiver_id, relationship, is_primary) values
   ('a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000001', 'grandson', true),
-  ('a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000002', 'son', false),
+  ('a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000003', 'daughter', false),
   ('a0000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000002', 'family', true);
 
 insert into medications (id, senior_id, name, dosage, instructions) values
