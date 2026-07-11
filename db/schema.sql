@@ -66,3 +66,19 @@ create index alerts_call_idx on alerts (call_log_id);
 -- Realtime for the Lovable dashboard (Alerts + Call History panels)
 alter publication supabase_realtime add table call_logs;
 alter publication supabase_realtime add table alerts;
+
+-- RLS: anon key is read-only (voice agent profile reads, Lovable dashboard).
+-- All writes go through the backend's service_role key, which bypasses RLS.
+alter table caregivers  enable row level security;
+alter table seniors     enable row level security;
+alter table medications enable row level security;
+alter table schedules   enable row level security;
+alter table call_logs   enable row level security;
+alter table alerts      enable row level security;
+
+create policy "anon read" on caregivers  for select to anon using (true);
+create policy "anon read" on seniors     for select to anon using (true);
+create policy "anon read" on medications for select to anon using (true);
+create policy "anon read" on schedules   for select to anon using (true);
+create policy "anon read" on call_logs   for select to anon using (true);
+create policy "anon read" on alerts      for select to anon using (true);
