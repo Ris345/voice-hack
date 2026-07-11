@@ -1,8 +1,11 @@
+import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException
 from fastapi.responses import Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from twilio.rest import Client as TwilioClient
 
@@ -14,6 +17,13 @@ logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="Pill Buddy Backend")
 
+
+@app.on_event("startup")
+async def _start_scheduler():
+    from .services.scheduler import scheduler_loop
+
+    asyncio.create_task(scheduler_loop())
+
 _twilio = TwilioClient(settings.twilio_account_sid, settings.twilio_auth_token)
 
 
@@ -21,6 +31,7 @@ _twilio = TwilioClient(settings.twilio_account_sid, settings.twilio_auth_token)
 
 class TriggerCallIn(BaseModel):
     senior_id: str
+    reason: str = ""  # why this call is happening — passed to the agent
 
 
 @app.post("/calls/trigger")
@@ -35,7 +46,9 @@ def trigger_call(body: TriggerCallIn):
     call_log = (
         supabase()
         .table("call_logs")
-        .insert({"senior_id": senior["id"], "status": "initiated"})
+        .insert(
+            {"senior_id": senior["id"], "status": "initiated", "call_reason": body.reason or None}
+        )
         .execute()
     ).data[0]
 
@@ -68,12 +81,17 @@ def invoke_call(body: InvokeCallIn):
     if rows:
         senior_id = rows[0]["id"]
     else:
-        caregiver_id = supabase().table("caregivers").select("id").limit(1).execute().data[0]["id"]
         senior_id = supabase().table("seniors").insert({
             "name": body.name,
             "phone": phone,
-            "caregiver_id": caregiver_id,
         }).execute().data[0]["id"]
+        # link to the first caregiver as primary so escalation has a target
+        caregiver_id = supabase().table("caregivers").select("id").limit(1).execute().data[0]["id"]
+        supabase().table("care_relationships").insert({
+            "senior_id": senior_id,
+            "caregiver_id": caregiver_id,
+            "is_primary": True,
+        }).execute()
 
     call_log = supabase().table("call_logs").insert(
         {"senior_id": senior_id, "status": "initiated"}
@@ -96,21 +114,74 @@ def invoke_call(body: InvokeCallIn):
 class CallResultIn(BaseModel):
     transcript_summary: str
     meds_confirmed: bool | None = None
+    transcript: list[dict] | None = None  # [{speaker, text}, ...]
+    wellness_note: str | None = None
+    action_items: list[dict] = []  # [{text, priority}]
 
 
 @app.post("/calls/{call_log_id}/result")
 def write_call_result(call_log_id: str, body: CallResultIn):
     """Voice agent writes its outcome here when the conversation ends."""
-    supabase().table("call_logs").update(
-        {
-            "transcript_summary": body.transcript_summary,
-            "meds_confirmed": body.meds_confirmed,
-            "status": "completed",
-            "ended_at": datetime.now(timezone.utc).isoformat(),
-        }
-    ).eq("id", call_log_id).execute()
+    update = {
+        "transcript_summary": body.transcript_summary,
+        "meds_confirmed": body.meds_confirmed,
+        "status": "completed",
+        "ended_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if body.transcript is not None:
+        update["transcript"] = body.transcript
+    if body.wellness_note is not None:
+        update["wellness_note"] = body.wellness_note
+    supabase().table("call_logs").update(update).eq("id", call_log_id).execute()
+
+    if body.action_items:
+        call = (
+            supabase().table("call_logs").select("senior_id").eq("id", call_log_id).single().execute()
+        ).data
+        supabase().table("action_items").insert(
+            [
+                {
+                    "senior_id": call["senior_id"],
+                    "text": a.get("text", ""),
+                    "priority": a.get("priority", "normal"),
+                    "source_call_id": call_log_id,
+                }
+                for a in body.action_items
+                if a.get("text")
+            ]
+        ).execute()
+
     sent = send_digest(call_log_id)
     return {"ok": True, "digest_sent": sent}
+
+
+class ReminderIn(BaseModel):
+    minutes_from_now: int
+    reason: str = "medication reminder"
+
+
+@app.post("/calls/{call_log_id}/reminder")
+def create_reminder(call_log_id: str, body: ReminderIn):
+    """Agent calls this when the senior asks to be called back later
+    ('remind me in 20 minutes'). The scheduler loop places the callback."""
+    call = (
+        supabase().table("call_logs").select("senior_id").eq("id", call_log_id).single().execute()
+    ).data
+    due = datetime.now(timezone.utc) + timedelta(minutes=body.minutes_from_now)
+    row = (
+        supabase()
+        .table("reminders")
+        .insert(
+            {
+                "senior_id": call["senior_id"],
+                "due_at": due.isoformat(),
+                "reason": body.reason,
+                "source": "agent",
+            }
+        )
+        .execute()
+    ).data[0]
+    return {"reminder_id": row["id"], "due_at": row["due_at"]}
 
 
 # ---------------------------------------------------------------- alerts
@@ -171,3 +242,9 @@ def status_callback(CallSid: str = Form(...), CallStatus: str = Form(...)):
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+# Caregiver portal (dashboard/ at repo root) — served last so API routes win.
+_dashboard = Path(__file__).resolve().parents[2] / "dashboard"
+if _dashboard.is_dir():
+    app.mount("/", StaticFiles(directory=_dashboard, html=True), name="dashboard")

@@ -20,8 +20,9 @@ def set_learnings(lessons: list[str]) -> None:
     global _learnings
     _learnings = lessons
 
-_SYSTEM = """You are Pill Buddy, a warm, caring companion who calls elderly patients \
-for a brief daily check-in. You sound like a kind neighbor — natural, unhurried, \
+_SYSTEM = """You are Emily from Pill Buddy, a warm, caring companion who calls elderly \
+patients for a brief daily check-in. Introduce yourself as "Emily from Pill Buddy" and \
+refer to yourself as Emily. You sound like a kind neighbor — natural, unhurried, \
 genuinely interested — never robotic or clinical.
 
 VOICE CALL RULES (non-negotiable):
@@ -43,7 +44,7 @@ EXAMPLES of good responses (use as tone guide, not scripts):
 
 [greeting stage, first turn]
 Patient: (picks up)
-You: "Hi Dorothy! It's Pill Buddy calling to check in on you. How are you doing today?"
+You: "Hi Dorothy! It's Emily from Pill Buddy calling to check in on you. How are you doing today?"
 
 [greeting stage, patient seems chatty]
 Patient: "Oh hi! I just got back from the garden, my tomatoes are finally coming in!"
@@ -65,12 +66,20 @@ You: "I'm sorry to hear that, knees can really be a nuisance. Are you able to ge
 Patient: "I think that's everything, thanks for calling"
 You: "Of course, it was so nice talking with you Dorothy. You take good care and I'll check in again soon!"
 
+REMINDERS — you can schedule a real callback:
+If the patient asks to be called back or reminded later ("call me again in 20
+minutes", "remind me tonight", "I'll take it in an hour, check on me then"),
+set reminder_minutes to how many minutes from now the callback should happen,
+and confirm it in your speech ("I'll give you a ring in 20 minutes then!").
+Otherwise reminder_minutes is null. Only set it when the patient clearly asks.
+
 You MUST reply with JSON only — no other text:
 {
   "speech": "<what to say — plain conversational text, max 2 sentences>",
   "next_stage": "<greeting|med_check|wellness|closing>",
   "med_status": "<taken|missed|unknown>",
-  "should_close": <true|false>
+  "should_close": <true|false>,
+  "reminder_minutes": <number|null>
 }
 
 med_status stays "unknown" until the patient clearly answers about medications.
@@ -96,6 +105,8 @@ def run_turn(
     med_summary: str,
     notes: str = "",
     grandkid_names: list[str] | None = None,
+    past_calls: str = "",
+    call_reason: str = "",
 ) -> dict[str, Any]:
     """Process one conversation turn."""
 
@@ -104,10 +115,22 @@ def run_turn(
     # Rich context injected only on the first turn
     if not history:
         personality = ""
+        if call_reason:
+            personality += (
+                f"\nWhy you're calling right now: {call_reason} — mention this "
+                f"naturally when you check in (it's the point of the call)."
+            )
         if notes:
             personality += f"\nPersonality notes: {notes}"
         if grandkids:
             personality += f"\nGrandchildren: {', '.join(grandkids)}"
+        if past_calls:
+            personality += (
+                f"\nRecent check-ins (use for continuity — follow up naturally on "
+                f"things they mentioned, e.g. 'how's the knee feeling today?', and "
+                f"gently re-confirm anything that was missed; never recite this list):\n"
+                f"{past_calls}"
+            )
 
         context = (
             f"[PATIENT PROFILE]\n"
@@ -143,5 +166,47 @@ def run_turn(
     result.setdefault("next_stage", stage)
     result.setdefault("med_status", "unknown")
     result.setdefault("should_close", False)
+    result.setdefault("reminder_minutes", None)
     result["_assistant_raw"] = raw
     return result
+
+
+def summarize(
+    transcript: list[tuple[str, str]], patient_name: str, past_calls: str = ""
+) -> dict[str, Any]:
+    """Post-call: caregiver-facing summary, wellness note, and action items —
+    informed by this call AND the recent history (recurring pain, repeated
+    missed doses, requests for family contact...)."""
+    convo = "\n".join(f"{speaker}: {text}" for speaker, text in transcript)
+    context = f"Patient: {patient_name}\n"
+    if past_calls:
+        context += f"\nRecent check-in history:\n{past_calls}\n"
+    context += f"\nToday's call:\n{convo}"
+    try:
+        resp = _client.messages.create(
+            model=_MODEL,
+            max_tokens=500,
+            system=(
+                "You review an eldercare check-in call for the patient's family "
+                "caregiver. Consider today's call AND the recent history — spot "
+                "patterns (recurring pain, repeated missed doses, loneliness). "
+                "Reply with JSON only: "
+                '{"summary": "<2-3 warm plain-English sentences: what was discussed, '
+                'medication outcome, anything the family should know>", '
+                '"wellness_note": "<1 sentence on mood/health signals>", '
+                '"action_items": [{"text": "<concrete thing the caregiver should do, '
+                "e.g. 'Ask her doctor about the recurring knee pain — mentioned 3 calls "
+                "in a row'>\", \"priority\": \"<normal|high>\"}] — 0 to 3 items, only "
+                "genuinely useful ones, empty list if nothing actionable}"
+            ),
+            messages=[{"role": "user", "content": context}],
+        )
+        result = _strip_json(resp.content[0].text)
+        result.setdefault("action_items", [])
+        return result
+    except Exception:
+        return {
+            "summary": f"Completed a check-in call with {patient_name}.",
+            "wellness_note": "",
+            "action_items": [],
+        }

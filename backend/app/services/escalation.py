@@ -15,20 +15,35 @@ _twilio = TwilioClient(settings.twilio_account_sid, settings.twilio_auth_token)
 SEVERITY_PREFIX = {"urgent": "🚨 URGENT", "warn": "⚠️", "info": "ℹ️"}
 
 
+def _send_message(to_phone: str, body: str) -> None:
+    """Send via SMS or WhatsApp sandbox depending on MESSAGING_CHANNEL.
+    Raises on failure so callers can log and continue."""
+    if settings.messaging_channel == "whatsapp":
+        _twilio.messages.create(
+            to=f"whatsapp:{to_phone}", from_=settings.twilio_whatsapp_from, body=body
+        )
+    else:
+        _twilio.messages.create(to=to_phone, from_=settings.sms_from, body=body)
+
+
 def _caregiver_for_call(call_log_id: str) -> tuple[dict, dict]:
-    """Returns (senior, caregiver) for a call_log id."""
+    """Returns (senior, primary caregiver) for a call_log id."""
     call = (
         supabase().table("call_logs").select("senior_id").eq("id", call_log_id).single().execute()
     ).data
     senior = (
+        supabase().table("seniors").select("*").eq("id", call["senior_id"]).single().execute()
+    ).data
+    rel = (
         supabase()
-        .table("seniors")
+        .table("care_relationships")
         .select("*, caregivers(*)")
-        .eq("id", call["senior_id"])
+        .eq("senior_id", call["senior_id"])
+        .eq("is_primary", True)
         .single()
         .execute()
     ).data
-    return senior, senior["caregivers"]
+    return senior, rel["caregivers"]
 
 
 def raise_alert(call_log_id: str, type_: str, detail: str, severity: str = "warn") -> dict:
@@ -48,13 +63,11 @@ def raise_alert(call_log_id: str, type_: str, detail: str, severity: str = "warn
     body = f"{prefix} Pill Buddy alert for {senior['name']}: {detail}"
 
     try:
-        _twilio.messages.create(
-            to=caregiver["phone"], from_=settings.twilio_from_number, body=body
-        )
+        _send_message(caregiver["phone"], body)
         supabase().table("alerts").update({"sms_sent": True}).eq("id", alert["id"]).execute()
         alert["sms_sent"] = True
     except Exception:
-        log.exception("alert SMS failed (alert row %s is still saved)", alert["id"])
+        log.exception("alert message failed (alert row %s is still saved)", alert["id"])
 
     return alert
 
@@ -82,11 +95,9 @@ def send_digest(call_log_id: str) -> bool:
         lines.append(f"{SEVERITY_PREFIX.get(a['severity'], '')} {a['detail']}")
 
     try:
-        _twilio.messages.create(
-            to=caregiver["phone"], from_=settings.twilio_from_number, body="\n".join(lines)
-        )
+        _send_message(caregiver["phone"], "\n".join(lines))
         supabase().table("call_logs").update({"digest_sent": True}).eq("id", call_log_id).execute()
         return True
     except Exception:
-        log.exception("digest SMS failed for call %s", call_log_id)
+        log.exception("digest message failed for call %s", call_log_id)
         return False

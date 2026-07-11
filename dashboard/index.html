@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pill Buddy — Caregiver Portal</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  :root {
+    --bg:#faf6f0; --card:#fff; --ink:#3d3229; --muted:#8a7d6f;
+    --accent:#e07a5f; --green:#6a994e; --amber:#e9a94a; --red:#d64545;
+    --blue:#5b8bb2; --line:#eee4d8;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { font-family:system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--ink); }
+  header { padding:18px 28px; display:flex; align-items:center; gap:14px; border-bottom:2px solid var(--line); background:var(--card); position:sticky; top:0; z-index:5;}
+  header h1 { font-size:22px; }
+  header .sub { color:var(--muted); font-size:13px; }
+  header .who { margin-left:auto; font-size:14px; color:var(--muted); }
+  header button { background:none; border:1px solid var(--line); border-radius:8px; padding:6px 12px; cursor:pointer; color:var(--muted); }
+  main { max-width:1000px; margin:0 auto; padding:24px 20px 80px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:20px; margin-bottom:16px; box-shadow:0 1px 4px rgba(80,60,40,.06); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(290px,1fr)); gap:16px; }
+  .senior-card { cursor:pointer; transition:transform .1s; }
+  .senior-card:hover { transform:translateY(-2px); }
+  .senior-card h3 { font-size:19px; margin-bottom:2px; }
+  .rel { color:var(--muted); font-size:13px; margin-bottom:10px; }
+  .badge { display:inline-block; font-size:11px; padding:2px 9px; border-radius:99px; font-weight:600; }
+  .badge.primary { background:#fdeee8; color:var(--accent); }
+  .badge.urgent { background:#fbe3e3; color:var(--red); }
+  .badge.warn { background:#fdf2dc; color:#b07d1e; }
+  .badge.info { background:#e6eef5; color:var(--blue); }
+  .row { display:flex; align-items:center; gap:8px; font-size:14px; margin:5px 0; color:var(--muted); }
+  .dots { display:flex; gap:5px; margin-top:10px; }
+  .dot { width:14px; height:14px; border-radius:50%; background:#e8ddd0; }
+  .dot.ok { background:var(--green); } .dot.miss { background:var(--red); }
+  h2 { font-size:17px; margin:26px 0 12px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th { text-align:left; color:var(--muted); font-weight:600; font-size:12px; padding:8px 10px; border-bottom:1px solid var(--line); }
+  td { padding:10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  tr.call { cursor:pointer; } tr.call:hover { background:#fdfaf5; }
+  .chat { max-height:320px; overflow-y:auto; padding:10px; background:#fdfaf5; border-radius:12px; margin:8px 0; }
+  .msg { max-width:75%; padding:8px 13px; border-radius:14px; margin:6px 0; font-size:14px; line-height:1.4; }
+  .msg.agent { background:#e6eef5; margin-right:auto; }
+  .msg.senior { background:#fdeee8; margin-left:auto; }
+  .msg .who { font-size:10px; color:var(--muted); font-weight:700; display:block; }
+  .back { color:var(--accent); cursor:pointer; font-size:14px; margin-bottom:14px; display:inline-block; }
+  input,select { font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+  .btn { background:var(--accent); color:#fff; border:none; border-radius:8px; padding:9px 16px; font-weight:600; cursor:pointer; font-size:14px; }
+  .btn:disabled { opacity:.5; }
+  .layout { display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:18px; align-items:start; }
+  .layout aside { position:sticky; top:76px; }
+  @media (max-width:800px) { .layout { grid-template-columns:1fr; } .layout aside { position:static; } }
+  .cg { padding:10px 0; border-bottom:1px solid var(--line); }
+  .cg:last-child { border-bottom:none; }
+  .cg b { font-size:15px; }
+  #login { max-width:360px; margin:80px auto; text-align:center; }
+  #login input { width:100%; margin-bottom:10px; }
+  #login .btn { width:100%; }
+  .flash { position:fixed; bottom:20px; right:20px; background:var(--ink); color:#fff; padding:12px 18px; border-radius:10px; font-size:14px; opacity:0; transition:opacity .3s; z-index:20;}
+  .flash.show { opacity:1; }
+  .muted { color:var(--muted); } .small { font-size:12px; }
+  .wellness { background:#f2f7ee; border-left:4px solid var(--green); padding:10px 14px; border-radius:0 10px 10px 0; font-size:14px; margin:10px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Pill Buddy 💊</h1>
+  <div class="sub">Keeping an eye on the people you love.</div>
+  <div class="who" id="who"></div>
+  <button id="logout" style="display:none">Sign out</button>
+</header>
+<main id="app"></main>
+<div class="flash" id="flash"></div>
+
+<script>
+const SB_URL = "https://svvmarfbnrabmtcyjufm.supabase.co";
+const SB_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN2dm1hcmZibnJhYm10Y3lqdWZtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM3NzYzOTIsImV4cCI6MjA5OTM1MjM5Mn0.drZ9RNr4zhBbAFj4hJ-mwGtQ-C-oaDKno2M4geKNXzg";
+const sb = supabase.createClient(SB_URL, SB_ANON);
+
+const app = document.getElementById("app");
+let CG = null;          // caregiver row
+let SENIORS = [];       // [{...senior, relationship, is_primary}]
+let VIEW = { page: "home", seniorId: null };
+
+const esc = s => (s ?? "").toString().replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const flash = m => { const f = document.getElementById("flash"); f.textContent = m; f.classList.add("show"); setTimeout(()=>f.classList.remove("show"), 3500); };
+const ago = t => { if (!t) return "—"; const s = (Date.now()-new Date(t))/1e3;
+  if (s<90) return "just now"; if (s<3600) return `${Math.round(s/60)}m ago`;
+  if (s<86400) return `${Math.round(s/3600)}h ago`; return `${Math.round(s/86400)}d ago`; };
+const meds3 = v => v===true ? "✅" : v===false ? "❌" : "—";
+const age = dob => dob ? Math.floor((Date.now()-new Date(dob))/3.15576e10) : null;
+
+// phone numbers are masked; the eye toggles the real number
+window._shown = {};
+const phoneHtml = (phone, key) => `<span id="ph-${key}">••• ••• ••••</span>
+  <a style="cursor:pointer" title="show/hide number" onclick="event.stopPropagation();togglePhone('${key}','${esc(phone)}')">👁️</a>`;
+window.togglePhone = (key, phone) => {
+  const el = document.getElementById("ph-" + key); if (!el) return;
+  window._shown[key] = !window._shown[key];
+  el.textContent = window._shown[key] ? phone : "••• ••• ••••";
+};
+
+// ---------- auth ----------
+async function init() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return renderLogin();
+  await loadCaregiver(session.user.email);
+}
+function renderLogin() {
+  app.innerHTML = `<div id="login" class="card">
+    <h2 style="margin:0 0 6px">Welcome back</h2>
+    <p class="muted small" style="margin-bottom:16px">Sign in to check on your loved ones</p>
+    <input id="em" type="email" placeholder="Email" value="">
+    <input id="pw" type="password" placeholder="Password">
+    <button class="btn" id="go">Sign in</button>
+    <p class="muted small" id="err" style="margin-top:10px"></p></div>`;
+  document.getElementById("go").onclick = async () => {
+    const { error } = await sb.auth.signInWithPassword({
+      email: document.getElementById("em").value.trim(),
+      password: document.getElementById("pw").value });
+    if (error) return document.getElementById("err").textContent = error.message;
+    init();
+  };
+}
+document.getElementById("logout").onclick = async () => { await sb.auth.signOut(); location.reload(); };
+
+async function loadCaregiver(email) {
+  const { data: cg, error } = await sb.from("caregivers").select("*").eq("email", email).single();
+  if (error || !cg) { app.innerHTML = `<div class="card">No caregiver profile is linked to <b>${esc(email)}</b>.</div>`; return; }
+  CG = cg;
+  document.getElementById("who").textContent = `Hi, ${cg.name}`;
+  document.getElementById("logout").style.display = "";
+  const { data: rels } = await sb.from("care_relationships")
+    .select("relationship, senior_label, is_primary, seniors(*)").eq("caregiver_id", cg.id);
+  SENIORS = (rels || []).map(r => ({ ...r.seniors, relationship: r.relationship,
+    senior_label: r.senior_label || "loved one", is_primary: r.is_primary }));
+  subscribeRealtime();
+  render();
+}
+
+// ---------- realtime ----------
+function subscribeRealtime() {
+  sb.channel("live")
+    .on("postgres_changes", { event: "*", schema: "public", table: "alerts" }, p => { flash("🔔 New alert"); render(); })
+    .on("postgres_changes", { event: "*", schema: "public", table: "call_logs" }, () => render())
+    .on("postgres_changes", { event: "*", schema: "public", table: "reminders" }, () => render())
+    .subscribe();
+}
+
+// ---------- views ----------
+async function render() {
+  if (!CG) return;
+  if (VIEW.page === "senior") return renderSenior(VIEW.seniorId);
+  return renderHome();
+}
+
+async function renderHome() {
+  const ids = SENIORS.map(s => s.id);
+  const { data: calls } = await sb.from("call_logs").select("*").in("senior_id", ids.length?ids:["-"]).order("started_at", { ascending: false });
+  const callsBySenior = {}; (calls||[]).forEach(c => (callsBySenior[c.senior_id] ??= []).push(c));
+  const callIds = (calls||[]).map(c=>c.id);
+  const { data: alerts } = callIds.length ? await sb.from("alerts").select("*, call_logs(senior_id, seniors(name))").in("call_log_id", callIds).order("created_at",{ascending:false}) : { data: [] };
+  const { data: openActions } = await sb.from("action_items").select("senior_id").eq("status","open").in("senior_id", ids.length?ids:["-"]);
+  const { data: allTeams } = await sb.from("care_relationships").select("senior_id, is_primary, caregivers(name)").in("senior_id", ids.length?ids:["-"]);
+
+  const cards = SENIORS.map(s => {
+    const sc = callsBySenior[s.id] || [];
+    const last = sc[0];
+    const nAlerts = (alerts||[]).filter(a => a.call_logs?.senior_id === s.id).length;
+    const nActions = (openActions||[]).filter(a => a.senior_id === s.id).length;
+    const team = (allTeams||[]).filter(t => t.senior_id === s.id)
+      .sort((a,b) => (b.is_primary?1:0)-(a.is_primary?1:0))
+      .map(t => `${esc(t.caregivers.name)}${t.is_primary?" ★":""}`).join(", ");
+    return `<div class="card senior-card" onclick="VIEW={page:'senior',seniorId:'${s.id}'};render()">
+      <h3>${esc(s.name)}</h3>
+      <div class="rel">your ${esc(s.senior_label)} · ${phoneHtml(s.phone, "card-"+s.id)}</div>
+      <div class="row">📞 Last call: ${last ? `${ago(last.started_at)} (${esc(last.status)})` : "no calls yet"}</div>
+      <div class="row">💊 Meds confirmed: ${last ? meds3(last.meds_confirmed) : "—"}</div>
+      <div class="row">🔔 ${nAlerts} alert${nAlerts===1?"":"s"} ${nActions ? `· ✨ ${nActions} suggestion${nActions===1?"":"s"}` : ""}</div>
+      <div class="row">👥 ${team || "no caregivers linked"} ${s.is_primary ? '<span class="badge primary">you are primary</span>' : ''}</div>
+      ${adherenceDots(sc)}</div>`;
+  }).join("");
+
+  const feed = (alerts||[]).slice(0, 8).map(a => `
+    <tr><td><span class="badge ${esc(a.severity)}">${esc(a.severity)}</span></td>
+    <td><b>${esc(a.call_logs?.seniors?.name || "")}</b> — ${esc(a.detail)}
+      <div class="small muted">${ago(a.created_at)} ${a.sms_sent ? "· WhatsApp sent ✓" : ""}</div></td></tr>`).join("");
+
+  app.innerHTML = `<h2>My loved ones</h2><div class="grid">${cards || '<div class="card">No seniors linked to you yet.</div>'}</div>
+    <h2>Recent alerts</h2><div class="card"><table><tbody>${feed || '<tr><td class="muted">No alerts — all quiet 😊</td></tr>'}</tbody></table></div>`;
+}
+
+function adherenceDots(calls) {
+  const days = [...Array(7)].map((_, i) => { const d = new Date(); d.setDate(d.getDate() - (6 - i)); return d.toDateString(); });
+  const byDay = {}; calls.forEach(c => { const k = new Date(c.started_at).toDateString(); if (byDay[k] === undefined) byDay[k] = c.meds_confirmed; });
+  return `<div class="dots">${days.map(d => `<div class="dot ${byDay[d]===true?"ok":byDay[d]===false?"miss":""}" title="${d}"></div>`).join("")}</div><div class="small muted" style="margin-top:4px">last 7 days</div>`;
+}
+
+async function renderSenior(id) {
+  const s = SENIORS.find(x => x.id === id); if (!s) return renderHome();
+  const [{ data: meds }, { data: calls }, { data: rels }, { data: reminders }, { data: actions }, { data: schedules }] = await Promise.all([
+    sb.from("medications").select("*").eq("senior_id", id),
+    sb.from("call_logs").select("*").eq("senior_id", id).order("started_at", { ascending: false }).limit(25),
+    sb.from("care_relationships").select("relationship, is_primary, caregivers(id, name, phone, email)").eq("senior_id", id),
+    sb.from("reminders").select("*").eq("senior_id", id).eq("status","pending").order("due_at"),
+    sb.from("action_items").select("*").eq("senior_id", id).order("created_at", { ascending: false }).limit(20),
+    sb.from("schedules").select("*").eq("senior_id", id).order("call_time"),
+  ]);
+  const callIds = (calls||[]).map(c=>c.id);
+  const { data: alerts } = callIds.length ? await sb.from("alerts").select("*").in("call_log_id", callIds).order("created_at",{ascending:false}) : { data: [] };
+  const last = (calls||[])[0];
+  const confirmed = (calls||[]).filter(c=>c.meds_confirmed===true).length;
+  const answered = (calls||[]).filter(c=>c.meds_confirmed!==null).length;
+
+  const openActions = (actions||[]).filter(a=>a.status==="open");
+  const careTeam = `<div class="card"><h2 style="margin:0 0 8px">Care team 👥</h2>
+    ${(rels||[]).map(r=>`<div class="cg"><b>${esc(r.caregivers.name)}</b>
+      ${r.is_primary?'<span class="badge primary">primary</span>':""}
+      <div class="small muted">${esc(r.relationship)}</div>
+      <div class="small">${phoneHtml(r.caregivers.phone, "cg-"+r.caregivers.id)}</div>
+      ${r.caregivers.email?`<div class="small muted">${esc(r.caregivers.email)}</div>`:""}</div>`).join("")}
+    <div class="small muted" style="margin-top:8px">The primary caregiver receives WhatsApp alerts and call digests.</div>
+  </div>`;
+  app.innerHTML = `<span class="back" onclick="VIEW={page:'home'};render()">← back to loved ones</span>
+  <div class="layout"><div>
+  <div class="card"><h3 style="font-size:22px">${esc(s.name)}</h3>
+    <div class="rel">your ${esc(s.senior_label)} · ${phoneHtml(s.phone, "det-"+s.id)}</div>
+    ${last?.wellness_note ? `<div class="wellness">🌤️ ${esc(last.wellness_note)}</div>` : ""}
+    ${last?.transcript_summary ? `<div class="row small">Last call: ${esc(last.transcript_summary)}</div>` : ""}
+    <div class="row small">Adherence (last 25 calls): ${answered ? Math.round(100*confirmed/answered)+"%" : "—"}</div>
+    ${adherenceDots(calls||[])}</div>
+
+  <h2>Patient profile</h2>
+  <div class="card">
+    <div class="row">🎂 ${s.date_of_birth ? `${new Date(s.date_of_birth).toLocaleDateString([], {year:'numeric',month:'long',day:'numeric'})} (age ${age(s.date_of_birth)})` : "date of birth not on file"}</div>
+    <div class="row">🩺 Conditions: ${(s.conditions||[]).map(esc).join(" · ") || "none on file"}</div>
+    <div class="row">⚠️ Allergies: ${(s.allergies||[]).map(esc).join(" · ") || "none on file"}</div>
+    <div class="row">👨‍⚕️ ${esc(s.primary_doctor || "no primary doctor on file")}</div>
+    <div class="row" style="align-items:flex-start">💊 Prescriptions:</div>
+    ${(meds||[]).map(m=>`<div class="row small" style="margin-left:24px">${esc(m.name)} ${esc(m.dosage)}${m.instructions?` — ${esc(m.instructions)}`:""}</div>`).join("") || '<div class="muted small" style="margin-left:24px">none on file</div>'}
+    ${s.notes ? `<div class="row small">📝 ${esc(s.notes)}</div>` : ""}
+  </div>
+
+  <h2>Suggested for you ✨ <span class="small muted" style="font-weight:400">from Emily's conversations</span></h2>
+  <div class="card">
+    ${openActions.map(a=>`<div class="row" style="align-items:flex-start">
+      <input type="checkbox" onchange="doneAction('${a.id}')" title="mark done">
+      ${a.priority==="high"?'<span class="badge urgent">high</span>':""}
+      <span>${esc(a.text)}<div class="small muted">${ago(a.created_at)}</div></span></div>`).join("")
+      || '<div class="muted small">Nothing right now — Emily will suggest follow-ups here after her calls.</div>'}
+    ${(actions||[]).filter(a=>a.status==="done").slice(0,3).map(a=>`<div class="row small muted" style="text-decoration:line-through">✓ ${esc(a.text)}</div>`).join("")}
+  </div>
+
+  <h2>Schedules & reminders</h2>
+  <div class="card">
+    <b class="small">Daily call schedules</b>
+    ${(schedules||[]).map(sc => `
+      <div class="row">⏰ <span style="flex:1">${esc(sc.label)}</span>
+        <input type="time" value="${esc(sc.call_time?.slice(0,5))}" onchange="updSchedule('${sc.id}', this.value)">
+        <label class="small"><input type="checkbox" ${sc.active?"checked":""} onchange="toggleSchedule('${sc.id}', this.checked)"> active</label>
+      </div>`).join("") || '<div class="muted small">no daily schedules yet</div>'}
+    <div class="row">➕ new daily call at
+      <input type="time" id="sch-time" value="10:00">
+      about <input type="text" id="sch-label" placeholder="what is this call about? (required)" style="flex:1">
+      <button class="btn" onclick="addSchedule('${id}')">Add</button></div>
+    <div style="border-top:1px solid var(--line); margin:12px 0; padding-top:12px">
+      <b class="small">One-off reminder call</b>
+      <div class="row">in <input type="number" id="rem-min" value="30" min="1" style="width:70px"> minutes —
+        about <input type="text" id="rem-why" placeholder="what is this reminder about? (required)" style="flex:1">
+        <button class="btn" onclick="addReminder('${id}')">Schedule</button></div>
+      ${(reminders||[]).map(r=>`<div class="row small">⏳ ${new Date(r.due_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})} — ${esc(r.reason)} <span class="badge info">${esc(r.source)}</span>
+        <a style="cursor:pointer;color:var(--red)" onclick="cancelReminder('${r.id}')">cancel</a></div>`).join("")}
+    </div></div>
+
+  <h2>Alerts</h2>
+  <div class="card"><table><tbody>
+    ${(alerts||[]).map(a=>`<tr><td><span class="badge ${esc(a.severity)}">${esc(a.severity)}</span></td>
+      <td>${esc(a.detail)}<div class="small muted">${ago(a.created_at)} ${a.sms_sent?"· WhatsApp sent ✓":""}</div></td></tr>`).join("")
+      || '<tr><td class="muted">no alerts</td></tr>'}</tbody></table></div>
+
+  <h2>Call history</h2>
+  <div class="card"><table>
+    <tr><th>When</th><th>Status</th><th>Meds</th><th>Summary</th></tr>
+    ${(calls||[]).map((c,i)=>`
+      <tr class="call" onclick="document.getElementById('tx-${i}').style.display = document.getElementById('tx-${i}').style.display==='none'?'':'none'">
+        <td>${new Date(c.started_at).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
+        <td>${esc(c.status)}</td><td>${meds3(c.meds_confirmed)}</td>
+        <td>${esc(c.transcript_summary || "")}<div class="small muted">${c.transcript?.length ? "click to view transcript" : ""}</div></td></tr>
+      <tr id="tx-${i}" style="display:none"><td colspan="4">${transcriptHtml(c.transcript)}</td></tr>`).join("")
+      || "<tr><td class='muted' colspan='4'>no calls yet</td></tr>"}</table></div>
+  </div><aside>${careTeam}</aside></div>`;
+}
+
+function transcriptHtml(t) {
+  if (!t?.length) return '<span class="muted small">no transcript recorded for this call</span>';
+  return `<div class="chat">${t.map(m => `<div class="msg ${m.speaker==="AGENT"?"agent":"senior"}">
+    <span class="who">${m.speaker==="AGENT"?"Emily":"them"}</span>${esc(m.text)}</div>`).join("")}</div>`;
+}
+
+// ---------- writes ----------
+async function updSchedule(id, time) {
+  const { error } = await sb.from("schedules").update({ call_time: time }).eq("id", id);
+  flash(error ? "Failed: " + error.message : "Schedule updated to " + time);
+}
+async function toggleSchedule(id, active) {
+  const { error } = await sb.from("schedules").update({ active }).eq("id", id);
+  flash(error ? "Failed: " + error.message : active ? "Schedule activated" : "Schedule paused");
+}
+async function addReminder(seniorId) {
+  const mins = parseInt(document.getElementById("rem-min").value || "30", 10);
+  const reason = document.getElementById("rem-why").value.trim();
+  if (!reason) return flash("Please describe what the reminder is about");
+  const due = new Date(Date.now() + mins * 60000).toISOString();
+  const { error } = await sb.from("reminders").insert({ senior_id: seniorId, due_at: due, reason, source: "caregiver" });
+  flash(error ? "Failed: " + error.message : `Reminder call scheduled in ${mins} min`); render();
+}
+async function addSchedule(seniorId) {
+  const call_time = document.getElementById("sch-time").value;
+  const label = document.getElementById("sch-label").value.trim();
+  if (!label) return flash("Please describe what the call is about");
+  if (!call_time) return flash("Please pick a time");
+  // if the time already passed today, first call is tomorrow (not instantly)
+  const now = new Date();
+  const passed = call_time <= `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+  const { error } = await sb.from("schedules").insert({ senior_id: seniorId, call_time, label, active: true,
+    last_fired_on: passed ? now.toISOString().slice(0,10) : null });
+  flash(error ? "Failed: " + error.message : `Daily call added at ${call_time}${passed ? " (starts tomorrow)" : ""}`); render();
+}
+async function cancelReminder(id) {
+  await sb.from("reminders").update({ status: "cancelled" }).eq("id", id);
+  flash("Reminder cancelled"); render();
+}
+async function doneAction(id) {
+  const { error } = await sb.from("action_items").update({ status: "done" }).eq("id", id);
+  flash(error ? "Failed: " + error.message : "Nice — marked done ✓"); render();
+}
+
+init();
+</script>
+</body>
+</html>
