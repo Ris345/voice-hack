@@ -1,22 +1,24 @@
 -- Demo seed data — Grandma's Pill Buddy
 -- IMPORTANT: replace the phone numbers below with your team's real cell numbers
--- before the demo so calls/SMS actually reach the people on stage.
---   +15550001001 → the "grandma" phone (whoever plays the senior)
---   +15550002001 → the "caregiver" phone (judge or teammate who gets the SMS)
+-- before the demo so calls/WhatsApp actually reach the people on stage.
 
-insert into caregivers (id, name, phone) values
-  ('c0000000-0000-0000-0000-000000000001', 'Priya (daughter)',  '+15550002001'),
-  ('c0000000-0000-0000-0000-000000000002', 'Marcus (son)',      '+15550002002');
+insert into caregivers (id, name, phone, email) values
+  ('c0000000-0000-0000-0000-000000000001', 'Grandson', '+19176559764', 'grandson@demo.com'),
+  ('c0000000-0000-0000-0000-000000000002', 'Marcus (son)', '+15550002002', null);
 
-insert into seniors (id, name, phone, grandkid_names, notes, caregiver_id) values
-  ('a0000000-0000-0000-0000-000000000001', 'Rose Thompson', '+15550001001',
-   '{Maya,Jaden}',
-   'Loves her garden (tomatoes this summer). Knee has been bothering her. Watches Jeopardy every night.',
-   'c0000000-0000-0000-0000-000000000001'),
+insert into seniors (id, name, phone, grandkid_names, notes) values
+  ('a0000000-0000-0000-0000-000000000001', 'Abhinav', '+19293312368',
+   '{Grandson}',
+   'Suffering from amnesia — often forgets whether he has taken his medication today. Be extra gentle and patient; confirm each medication clearly.'),
   ('a0000000-0000-0000-0000-000000000002', 'Harold Chen', '+15550001002',
    '{Lily}',
-   'Retired mailman, walks every morning. Proud of Lily''s soccer season.',
-   'c0000000-0000-0000-0000-000000000002');
+   'Retired mailman, walks every morning. Proud of Lily''s soccer season.');
+
+-- who tracks whom; exactly one primary per senior (primary gets the WhatsApp)
+insert into care_relationships (senior_id, caregiver_id, relationship, is_primary) values
+  ('a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000001', 'grandson', true),
+  ('a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000002', 'son', false),
+  ('a0000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000002', 'family', true);
 
 insert into medications (id, senior_id, name, dosage, instructions) values
   ('b0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001',

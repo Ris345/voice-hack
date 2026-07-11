@@ -59,12 +59,20 @@ You: "I'm sorry to hear that, knees can really be a nuisance. Are you able to ge
 Patient: "I think that's everything, thanks for calling"
 You: "Of course, it was so nice talking with you Dorothy. You take good care and I'll check in again soon!"
 
+REMINDERS — you can schedule a real callback:
+If the patient asks to be called back or reminded later ("call me again in 20
+minutes", "remind me tonight", "I'll take it in an hour, check on me then"),
+set reminder_minutes to how many minutes from now the callback should happen,
+and confirm it in your speech ("I'll give you a ring in 20 minutes then!").
+Otherwise reminder_minutes is null. Only set it when the patient clearly asks.
+
 You MUST reply with JSON only — no other text:
 {
   "speech": "<what to say — plain conversational text, max 2 sentences>",
   "next_stage": "<greeting|med_check|wellness|closing>",
   "med_status": "<taken|missed|unknown>",
-  "should_close": <true|false>
+  "should_close": <true|false>,
+  "reminder_minutes": <number|null>
 }
 
 med_status stays "unknown" until the patient clearly answers about medications.
@@ -131,5 +139,32 @@ def run_turn(
     result.setdefault("next_stage", stage)
     result.setdefault("med_status", "unknown")
     result.setdefault("should_close", False)
+    result.setdefault("reminder_minutes", None)
     result["_assistant_raw"] = raw
     return result
+
+
+def summarize(transcript: list[tuple[str, str]], patient_name: str) -> dict[str, str]:
+    """Post-call: turn the transcript into a caregiver-facing summary and a
+    wellness note. Falls back to a generic line if the model call fails."""
+    convo = "\n".join(f"{speaker}: {text}" for speaker, text in transcript)
+    try:
+        resp = _client.messages.create(
+            model=_MODEL,
+            max_tokens=300,
+            system=(
+                "You summarize an eldercare check-in call for the patient's family. "
+                "Reply with JSON only: "
+                '{"summary": "<2-3 warm plain-English sentences: what was discussed, '
+                'medication outcome, anything the family should know>", '
+                '"wellness_note": "<1 sentence on mood/health signals, e.g. '
+                "'Sounded cheerful; mentioned knee pain again.'>\"}"
+            ),
+            messages=[{"role": "user", "content": f"Patient: {patient_name}\n\n{convo}"}],
+        )
+        return _strip_json(resp.content[0].text)
+    except Exception:
+        return {
+            "summary": f"Completed a check-in call with {patient_name}.",
+            "wellness_note": "",
+        }

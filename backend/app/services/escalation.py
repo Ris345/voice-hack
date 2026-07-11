@@ -27,19 +27,23 @@ def _send_message(to_phone: str, body: str) -> None:
 
 
 def _caregiver_for_call(call_log_id: str) -> tuple[dict, dict]:
-    """Returns (senior, caregiver) for a call_log id."""
+    """Returns (senior, primary caregiver) for a call_log id."""
     call = (
         supabase().table("call_logs").select("senior_id").eq("id", call_log_id).single().execute()
     ).data
     senior = (
+        supabase().table("seniors").select("*").eq("id", call["senior_id"]).single().execute()
+    ).data
+    rel = (
         supabase()
-        .table("seniors")
+        .table("care_relationships")
         .select("*, caregivers(*)")
-        .eq("id", call["senior_id"])
+        .eq("senior_id", call["senior_id"])
+        .eq("is_primary", True)
         .single()
         .execute()
     ).data
-    return senior, senior["caregivers"]
+    return senior, rel["caregivers"]
 
 
 def raise_alert(call_log_id: str, type_: str, detail: str, severity: str = "warn") -> dict:

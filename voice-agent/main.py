@@ -116,6 +116,8 @@ async def incoming(
     )
 
     _update_session_from_result(CallSid, result)
+    session.setdefault("transcript", []).append(("AGENT", result["speech"]))
+    print(f"[TX {CallSid[:8]}] AGENT-OPEN [{result['next_stage']}]: {result['speech']}", flush=True)
 
     if result["should_close"]:
         return _twiml(say_and_hangup(result["speech"]))
@@ -134,9 +136,11 @@ async def gather(
         return _twiml(say_and_hangup("Sorry, something went wrong. Goodbye!"))
 
     user_speech = SpeechResult.strip()
+    print(f"[TX {CallSid[:8]}] GRANDMA (conf={Confidence}): {user_speech!r}", flush=True)
 
     # Append patient turn to history
     sessions.append_history(CallSid, "user", user_speech)
+    session.setdefault("transcript", []).append(("GRANDMA", user_speech))
 
     result = agent.run_turn(
         history=session["history"],
@@ -149,9 +153,19 @@ async def gather(
     )
 
     _update_session_from_result(CallSid, result)
+    session.setdefault("transcript", []).append(("AGENT", result["speech"]))
+    print(f"[TX {CallSid[:8]}] AGENT [{result['next_stage']}/med={result['med_status']}]: {result['speech']}", flush=True)
 
     # Write med flag when status becomes known
     _handle_med_flag(session, result["med_status"])
+
+    # Patient asked for a callback ("remind me in 20 minutes") → real reminder
+    if result.get("reminder_minutes"):
+        backend_client.request_reminder(
+            session.get("callLogId", ""),
+            int(result["reminder_minutes"]),
+            f"{session['patientName']} asked to be called back during the last check-in.",
+        )
 
     if result["should_close"]:
         closed = sessions.close(CallSid)
@@ -185,18 +199,30 @@ async def status(
 
 
 def _report_call_result(session: dict | None) -> None:
-    """Send the conversation outcome to the backend (idempotent there)."""
+    """Send the conversation outcome to the backend (idempotent there):
+    AI-written summary + wellness note + full turn-by-turn transcript."""
     if not session:
         return
     med_status = session.get("medStatus", "unknown")
     meds_confirmed = {"taken": True, "missed": False}.get(med_status)
     name = session.get("patientName", "the patient")
-    n_turns = len(session.get("history", []))
-    summary = (
-        f"Chatted with {name} ({n_turns // 2} exchanges). "
-        f"Medication status: {med_status}."
+    transcript = session.get("transcript", [])
+
+    if transcript:
+        summarized = agent.summarize(transcript, name)
+        summary = summarized.get("summary", f"Completed a check-in call with {name}.")
+        wellness_note = summarized.get("wellness_note", "")
+    else:
+        summary = f"Call with {name} ended before any conversation."
+        wellness_note = ""
+
+    backend_client.report_result(
+        session.get("callLogId", ""),
+        summary,
+        meds_confirmed,
+        transcript=[{"speaker": s, "text": t} for s, t in transcript],
+        wellness_note=wellness_note,
     )
-    backend_client.report_result(session.get("callLogId", ""), summary, meds_confirmed)
 
 
 # ---------------------------------------------------------------------------
