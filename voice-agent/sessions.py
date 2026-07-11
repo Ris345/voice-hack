@@ -9,7 +9,8 @@ _store: dict[str, dict[str, Any]] = {}
 
 
 def create(
-    call_sid: str, patient_name: str, phone: str, med_summary: str, call_log_id: str = ""
+    call_sid: str, patient_name: str, phone: str, med_summary: str,
+    call_log_id: str = "", notes: str = "", grandkid_names: list = []
 ) -> dict[str, Any]:
     session = {
         "callSid": call_sid,
@@ -17,6 +18,8 @@ def create(
         "phone": phone,
         "medSummary": med_summary,
         "callLogId": call_log_id,
+        "notes": notes,
+        "grandkidNames": grandkid_names,
         "stage": "greeting",
         "medStatus": "unknown",
         "history": [],
