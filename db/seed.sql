@@ -22,11 +22,11 @@ insert into seniors (id, name, phone, grandkid_names, notes, date_of_birth, cond
    null, '{}', '{}', null);
 
 -- who tracks whom; exactly one primary per senior (primary gets the WhatsApp)
-insert into care_relationships (senior_id, caregiver_id, relationship, is_primary) values
-  ('a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000001', 'grandson', true),
-  ('a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000003', 'granddaughter', false),
-  ('a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000004', 'nurse', false),
-  ('a0000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000002', 'family', true);
+insert into care_relationships (senior_id, caregiver_id, relationship, senior_label, is_primary) values
+  ('a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000001', 'grandson', 'grandmother', true),
+  ('a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000003', 'granddaughter', 'grandmother', false),
+  ('a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000004', 'nurse', 'patient', false),
+  ('a0000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000002', 'family', 'father', true);
 
 insert into medications (id, senior_id, name, dosage, instructions) values
   ('b0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001',

@@ -28,7 +28,8 @@ create table care_relationships (
   id uuid primary key default gen_random_uuid(),
   senior_id uuid not null references seniors(id) on delete cascade,
   caregiver_id uuid not null references caregivers(id) on delete cascade,
-  relationship text not null default 'family',   -- grandson, daughter, ...
+  relationship text not null default 'family',   -- caregiver's relation to the senior: grandson, nurse, ...
+  senior_label text not null default '',          -- senior's relation to the caregiver: grandmother, patient, ...
   is_primary boolean not null default false,
   created_at timestamptz not null default now(),
   unique (senior_id, caregiver_id)

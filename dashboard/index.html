@@ -132,8 +132,9 @@ async function loadCaregiver(email) {
   document.getElementById("who").textContent = `Hi, ${cg.name}`;
   document.getElementById("logout").style.display = "";
   const { data: rels } = await sb.from("care_relationships")
-    .select("relationship, is_primary, seniors(*)").eq("caregiver_id", cg.id);
-  SENIORS = (rels || []).map(r => ({ ...r.seniors, relationship: r.relationship, is_primary: r.is_primary }));
+    .select("relationship, senior_label, is_primary, seniors(*)").eq("caregiver_id", cg.id);
+  SENIORS = (rels || []).map(r => ({ ...r.seniors, relationship: r.relationship,
+    senior_label: r.senior_label || "loved one", is_primary: r.is_primary }));
   subscribeRealtime();
   render();
 }
@@ -161,18 +162,23 @@ async function renderHome() {
   const callIds = (calls||[]).map(c=>c.id);
   const { data: alerts } = callIds.length ? await sb.from("alerts").select("*, call_logs(senior_id, seniors(name))").in("call_log_id", callIds).order("created_at",{ascending:false}) : { data: [] };
   const { data: openActions } = await sb.from("action_items").select("senior_id").eq("status","open").in("senior_id", ids.length?ids:["-"]);
+  const { data: allTeams } = await sb.from("care_relationships").select("senior_id, is_primary, caregivers(name)").in("senior_id", ids.length?ids:["-"]);
 
   const cards = SENIORS.map(s => {
     const sc = callsBySenior[s.id] || [];
     const last = sc[0];
     const nAlerts = (alerts||[]).filter(a => a.call_logs?.senior_id === s.id).length;
     const nActions = (openActions||[]).filter(a => a.senior_id === s.id).length;
+    const team = (allTeams||[]).filter(t => t.senior_id === s.id)
+      .sort((a,b) => (b.is_primary?1:0)-(a.is_primary?1:0))
+      .map(t => `${esc(t.caregivers.name)}${t.is_primary?" ★":""}`).join(", ");
     return `<div class="card senior-card" onclick="VIEW={page:'senior',seniorId:'${s.id}'};render()">
-      <h3>${esc(s.name)} ${s.is_primary ? '<span class="badge primary">primary caregiver</span>' : ''}</h3>
-      <div class="rel">your ${esc(s.relationship)} · ${phoneHtml(s.phone, "card-"+s.id)}</div>
+      <h3>${esc(s.name)}</h3>
+      <div class="rel">your ${esc(s.senior_label)} · ${phoneHtml(s.phone, "card-"+s.id)}</div>
       <div class="row">📞 Last call: ${last ? `${ago(last.started_at)} (${esc(last.status)})` : "no calls yet"}</div>
       <div class="row">💊 Meds confirmed: ${last ? meds3(last.meds_confirmed) : "—"}</div>
       <div class="row">🔔 ${nAlerts} alert${nAlerts===1?"":"s"} ${nActions ? `· ✨ ${nActions} suggestion${nActions===1?"":"s"}` : ""}</div>
+      <div class="row">👥 ${team || "no caregivers linked"} ${s.is_primary ? '<span class="badge primary">you are primary</span>' : ''}</div>
       ${adherenceDots(sc)}</div>`;
   }).join("");
 
@@ -218,7 +224,7 @@ async function renderSenior(id) {
   app.innerHTML = `<span class="back" onclick="VIEW={page:'home'};render()">← back to loved ones</span>
   <div class="layout"><div>
   <div class="card"><h3 style="font-size:22px">${esc(s.name)}</h3>
-    <div class="rel">your ${esc(s.relationship)} · ${phoneHtml(s.phone, "det-"+s.id)}</div>
+    <div class="rel">your ${esc(s.senior_label)} · ${phoneHtml(s.phone, "det-"+s.id)}</div>
     ${last?.wellness_note ? `<div class="wellness">🌤️ ${esc(last.wellness_note)}</div>` : ""}
     ${last?.transcript_summary ? `<div class="row small">Last call: ${esc(last.transcript_summary)}</div>` : ""}
     <div class="row small">Adherence (last 25 calls): ${answered ? Math.round(100*confirmed/answered)+"%" : "—"}</div>
