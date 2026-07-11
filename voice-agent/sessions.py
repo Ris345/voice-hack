@@ -8,12 +8,15 @@ from typing import Any
 _store: dict[str, dict[str, Any]] = {}
 
 
-def create(call_sid: str, patient_name: str, phone: str, med_summary: str) -> dict[str, Any]:
+def create(
+    call_sid: str, patient_name: str, phone: str, med_summary: str, call_log_id: str = ""
+) -> dict[str, Any]:
     session = {
         "callSid": call_sid,
         "patientName": patient_name,
         "phone": phone,
         "medSummary": med_summary,
+        "callLogId": call_log_id,
         "stage": "greeting",
         "medStatus": "unknown",
         "history": [],
