@@ -1,0 +1,27 @@
+services:
+  voice-agent:
+    build: ./voice-agent
+    ports:
+      - "8000:8000"
+    env_file: voice-agent/.env
+    environment:
+      - BACKEND_URL=http://backend:8080
+      - JUDGE_URL=http://judge:8001
+    depends_on:
+      - backend
+      - judge
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    ports:
+      - "8080:8080"
+    env_file: backend/.env
+    restart: unless-stopped
+
+  judge:
+    build: ./judge-agent
+    ports:
+      - "8001:8001"
+    env_file: judge-agent/.env
+    restart: unless-stopped
