@@ -93,7 +93,7 @@ def _strip_json(raw: str) -> dict[str, Any]:
 
 
 def _goodbye_signal(text: str) -> bool:
-    hits = ["goodbye", "bye", "got to go", "gotta go", "talk later", "hang up", "take care"]
+    hits = ["goodbye", "bye", "got to go", "gotta go", "talk later", "hang up"]
     return any(h in text.lower() for h in hits)
 
 
@@ -104,11 +104,13 @@ def run_turn(
     patient_name: str,
     med_summary: str,
     notes: str = "",
-    grandkid_names: list[str] = [],
+    grandkid_names: list[str] | None = None,
     past_calls: str = "",
     call_reason: str = "",
 ) -> dict[str, Any]:
     """Process one conversation turn."""
+
+    grandkids = grandkid_names or []
 
     # Rich context injected only on the first turn
     if not history:
@@ -120,8 +122,8 @@ def run_turn(
             )
         if notes:
             personality += f"\nPersonality notes: {notes}"
-        if grandkid_names:
-            personality += f"\nGrandchildren: {', '.join(grandkid_names)}"
+        if grandkids:
+            personality += f"\nGrandchildren: {', '.join(grandkids)}"
         if past_calls:
             personality += (
                 f"\nRecent check-ins (use for continuity — follow up naturally on "
