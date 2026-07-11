@@ -265,11 +265,14 @@ async function renderSenior(id) {
       about <input type="text" id="sch-label" placeholder="what is this call about? (required)" style="flex:1">
       <button class="btn" onclick="addSchedule('${id}')">Add</button></div>
     <div style="border-top:1px solid var(--line); margin:12px 0; padding-top:12px">
-      <b class="small">One-off reminder call</b>
-      <div class="row">in <input type="number" id="rem-min" value="30" min="1" style="width:70px"> minutes —
+      <b class="small">Schedule a one-off call</b>
+      <div class="row">📅 at <input type="datetime-local" id="rem-at">
+        to check on <input type="text" id="rem-at-why" placeholder="e.g. how her knee is after the doctor visit (required)" style="flex:1">
+        <button class="btn" onclick="addReminderAt('${id}')">Schedule</button></div>
+      <div class="row">⚡ or in <input type="number" id="rem-min" value="30" min="1" style="width:70px"> minutes —
         about <input type="text" id="rem-why" placeholder="what is this reminder about? (required)" style="flex:1">
         <button class="btn" onclick="addReminder('${id}')">Schedule</button></div>
-      ${(reminders||[]).map(r=>`<div class="row small">⏳ ${new Date(r.due_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})} — ${esc(r.reason)} <span class="badge info">${esc(r.source)}</span>
+      ${(reminders||[]).map(r=>`<div class="row small">⏳ ${new Date(r.due_at).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})} — ${esc(r.reason)} <span class="badge info">${esc(r.source)}</span>
         <a style="cursor:pointer;color:var(--red)" onclick="cancelReminder('${r.id}')">cancel</a></div>`).join("")}
     </div></div>
 
@@ -326,6 +329,16 @@ async function addSchedule(seniorId) {
   const { error } = await sb.from("schedules").insert({ senior_id: seniorId, call_time, label, active: true,
     last_fired_on: passed ? now.toISOString().slice(0,10) : null });
   flash(error ? "Failed: " + error.message : `Daily call added at ${call_time}${passed ? " (starts tomorrow)" : ""}`); render();
+}
+async function addReminderAt(seniorId) {
+  const at = document.getElementById("rem-at").value;
+  const reason = document.getElementById("rem-at-why").value.trim();
+  if (!at) return flash("Please pick a date and time");
+  if (!reason) return flash("Please describe what to check on");
+  const due = new Date(at);
+  if (due <= new Date()) return flash("That time is in the past — pick a future time");
+  const { error } = await sb.from("reminders").insert({ senior_id: seniorId, due_at: due.toISOString(), reason, source: "caregiver" });
+  flash(error ? "Failed: " + error.message : `Call scheduled for ${due.toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}`); render();
 }
 async function cancelReminder(id) {
   await sb.from("reminders").update({ status: "cancelled" }).eq("id", id);

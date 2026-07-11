@@ -230,7 +230,9 @@ def _report_call_result(session: dict | None) -> None:
     transcript = session.get("transcript", [])
 
     if transcript:
-        summarized = agent.summarize(transcript, name, session.get("pastCalls", ""))
+        summarized = agent.summarize(
+            transcript, name, session.get("pastCalls", ""), session.get("notes", "")
+        )
         summary = summarized.get("summary", f"Completed a check-in call with {name}.")
         wellness_note = summarized.get("wellness_note", "")
         action_items = summarized.get("action_items", [])

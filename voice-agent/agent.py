@@ -184,13 +184,15 @@ def run_turn(
 
 
 def summarize(
-    transcript: list[tuple[str, str]], patient_name: str, past_calls: str = ""
+    transcript: list[tuple[str, str]], patient_name: str, past_calls: str = "", notes: str = ""
 ) -> dict[str, Any]:
     """Post-call: caregiver-facing summary, wellness note, and action items —
     informed by this call AND the recent history (recurring pain, repeated
     missed doses, requests for family contact...)."""
     convo = "\n".join(f"{speaker}: {text}" for speaker, text in transcript)
     context = f"Patient: {patient_name}\n"
+    if notes:
+        context += f"About the patient (match their gender/pronouns in your writing): {notes}\n"
     if past_calls:
         context += f"\nRecent check-in history:\n{past_calls}\n"
     context += f"\nToday's call:\n{convo}"
