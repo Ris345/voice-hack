@@ -11,6 +11,8 @@ AI-powered voice agent that calls elderly patients daily to check medication adh
 
 ## Architecture
 
+![High Level Architecture](docs/architecture.png)
+
 ```
 Twilio ──► voice-agent (FastAPI :8000)
                │  Claude (claude-sonnet-4-6)
