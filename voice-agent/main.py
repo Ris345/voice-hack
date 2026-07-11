@@ -29,8 +29,7 @@ app = FastAPI()
 
 @app.on_event("startup")
 def startup():
-    learnings = judge_client.fetch_learnings()
-    agent.set_learnings(learnings)
+    agent.set_learnings(judge_client.fetch_learnings())
 
 BASE_URL = os.environ.get("BASE_URL", "http://localhost:8000")
 GATHER_URL = f"{BASE_URL}/voice/gather"
@@ -110,6 +109,8 @@ async def incoming(
         notes=notes,
         grandkid_names=grandkid_names,
     )
+
+    agent.set_learnings(judge_client.fetch_learnings())
 
     result = agent.run_turn(
         history=session["history"],
@@ -216,7 +217,7 @@ def _report_call_result(session: dict | None) -> None:
 # ---------------------------------------------------------------------------
 
 def _update_session_from_result(call_sid: str, result: dict) -> None:
-    sessions.append_history(call_sid, "assistant", result["_assistant_raw"])
+    sessions.append_history(call_sid, "assistant", result["speech"])
     sessions.update(
         call_sid,
         stage=result["next_stage"],
