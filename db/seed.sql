@@ -36,7 +36,10 @@ insert into medications (id, senior_id, name, dosage, instructions) values
   ('b0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000002',
    'Atorvastatin', '20mg', 'once daily, evening');
 
-insert into schedules (medication_id, call_time, active) values
-  ('b0000000-0000-0000-0000-000000000001', '09:00', true),
-  ('b0000000-0000-0000-0000-000000000002', '18:00', true),
-  ('b0000000-0000-0000-0000-000000000003', '19:00', true);
+insert into schedules (senior_id, medication_id, label, call_time, active) values
+  ('a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001',
+   'Medication reminder: Lisinopril 10mg', '09:00', true),
+  ('a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002',
+   'Medication reminder: Metformin 500mg', '18:00', true),
+  ('a0000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000003',
+   'Medication reminder: Atorvastatin 20mg', '19:00', true);

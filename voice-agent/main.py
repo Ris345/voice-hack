@@ -101,8 +101,11 @@ async def incoming(
     notes = patient.get("notes", "")
     grandkid_names = patient.get("grandkid_names", [])
     past_calls = patients.call_history_context(patient.get("senior_id", ""))
+    reason = patients.call_reason(call_log_id)
     if past_calls:
         print(f"[TX {CallSid[:8]}] continuity context:\n{past_calls}", flush=True)
+    if reason:
+        print(f"[TX {CallSid[:8]}] call reason: {reason}", flush=True)
 
     session = sessions.create(
         call_sid=CallSid,
@@ -124,6 +127,7 @@ async def incoming(
         notes=notes,
         grandkid_names=grandkid_names,
         past_calls=past_calls,
+        call_reason=reason,
     )
 
     _update_session_from_result(CallSid, result)

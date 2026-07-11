@@ -35,7 +35,7 @@ def _due_schedules() -> list[dict]:
     rows = (
         supabase()
         .table("schedules")
-        .select("*, medications(senior_id, name)")
+        .select("*")
         .eq("active", True)
         .lte("call_time", now.strftime("%H:%M:%S"))
         .execute()
@@ -55,14 +55,14 @@ async def scheduler_loop():
                 supabase().table("reminders").update({"status": "done"}).eq(
                     "id", r["id"]
                 ).execute()
-                trigger_call(TriggerCallIn(senior_id=r["senior_id"]))
+                trigger_call(TriggerCallIn(senior_id=r["senior_id"], reason=r["reason"]))
 
             for s in _due_schedules():
-                log.info("daily schedule %s due (med: %s)", s["id"], s["medications"]["name"])
+                log.info("daily schedule %s due: %s", s["id"], s["label"])
                 supabase().table("schedules").update(
                     {"last_fired_on": datetime.now().date().isoformat()}
                 ).eq("id", s["id"]).execute()
-                trigger_call(TriggerCallIn(senior_id=s["medications"]["senior_id"]))
+                trigger_call(TriggerCallIn(senior_id=s["senior_id"], reason=s["label"]))
         except Exception:
             log.exception("scheduler tick failed (will retry)")
         await asyncio.sleep(POLL_SECONDS)

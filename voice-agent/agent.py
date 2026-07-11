@@ -106,12 +106,18 @@ def run_turn(
     notes: str = "",
     grandkid_names: list[str] = [],
     past_calls: str = "",
+    call_reason: str = "",
 ) -> dict[str, Any]:
     """Process one conversation turn."""
 
     # Rich context injected only on the first turn
     if not history:
         personality = ""
+        if call_reason:
+            personality += (
+                f"\nWhy you're calling right now: {call_reason} — mention this "
+                f"naturally when you check in (it's the point of the call)."
+            )
         if notes:
             personality += f"\nPersonality notes: {notes}"
         if grandkid_names:

@@ -61,6 +61,25 @@ def get_patient(phone: str) -> dict[str, Any] | None:
     return _PATIENTS.get(phone)
 
 
+def call_reason(call_log_id: str) -> str:
+    """Why this call was placed (schedule label / reminder reason), if any."""
+    if not (SUPABASE_URL and SUPABASE_KEY and call_log_id):
+        return ""
+    try:
+        resp = requests.get(
+            f"{SUPABASE_URL}/rest/v1/call_logs",
+            params={"id": f"eq.{call_log_id}", "select": "call_reason"},
+            headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
+            timeout=5,
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        return (rows[0].get("call_reason") or "") if rows else ""
+    except Exception as e:
+        print(f"[patients] call_reason lookup failed: {e}")
+        return ""
+
+
 def call_history_context(senior_id: str, limit: int = 3) -> str:
     """Compact digest of recent calls so the agent has continuity —
     what was discussed, how they seemed, what to follow up on."""

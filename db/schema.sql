@@ -49,13 +49,16 @@ create index medications_senior_idx on medications (senior_id);
 
 create table schedules (
   id uuid primary key default gen_random_uuid(),
-  medication_id uuid not null references medications(id) on delete cascade,
+  senior_id uuid not null references seniors(id) on delete cascade,
+  medication_id uuid references medications(id) on delete cascade,  -- optional link
+  label text not null default 'medication reminder',  -- what the call is about
   call_time time not null,
   active boolean not null default true,
   last_fired_on date,                  -- scheduler dedup: one call per schedule per day
   created_at timestamptz not null default now()
 );
 create index schedules_call_time_idx on schedules (call_time) where active;
+create index schedules_senior_idx on schedules (senior_id);
 
 -- one-off callbacks ("remind me in 20 min"), from caregiver or the agent itself
 create table reminders (
@@ -79,6 +82,7 @@ create table call_logs (
   transcript_summary text,
   transcript jsonb,                    -- [{speaker, text}, ...] full turn-by-turn
   wellness_note text,                  -- AI note on how they seemed
+  call_reason text,                    -- schedule label / reminder reason → agent context
   meds_confirmed boolean,
   digest_sent boolean not null default false
 );

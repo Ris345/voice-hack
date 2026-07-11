@@ -31,6 +31,7 @@ _twilio = TwilioClient(settings.twilio_account_sid, settings.twilio_auth_token)
 
 class TriggerCallIn(BaseModel):
     senior_id: str
+    reason: str = ""  # why this call is happening — passed to the agent
 
 
 @app.post("/calls/trigger")
@@ -45,7 +46,9 @@ def trigger_call(body: TriggerCallIn):
     call_log = (
         supabase()
         .table("call_logs")
-        .insert({"senior_id": senior["id"], "status": "initiated"})
+        .insert(
+            {"senior_id": senior["id"], "status": "initiated", "call_reason": body.reason or None}
+        )
         .execute()
     ).data[0]
 

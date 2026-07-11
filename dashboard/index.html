@@ -199,12 +199,13 @@ function adherenceDots(calls) {
 
 async function renderSenior(id) {
   const s = SENIORS.find(x => x.id === id); if (!s) return renderHome();
-  const [{ data: meds }, { data: calls }, { data: rels }, { data: reminders }, { data: actions }] = await Promise.all([
-    sb.from("medications").select("*, schedules(*)").eq("senior_id", id),
+  const [{ data: meds }, { data: calls }, { data: rels }, { data: reminders }, { data: actions }, { data: schedules }] = await Promise.all([
+    sb.from("medications").select("*").eq("senior_id", id),
     sb.from("call_logs").select("*").eq("senior_id", id).order("started_at", { ascending: false }).limit(25),
     sb.from("care_relationships").select("relationship, is_primary, caregivers(id, name, phone, email)").eq("senior_id", id),
     sb.from("reminders").select("*").eq("senior_id", id).eq("status","pending").order("due_at"),
     sb.from("action_items").select("*").eq("senior_id", id).order("created_at", { ascending: false }).limit(20),
+    sb.from("schedules").select("*").eq("senior_id", id).order("call_time"),
   ]);
   const callIds = (calls||[]).map(c=>c.id);
   const { data: alerts } = callIds.length ? await sb.from("alerts").select("*").in("call_log_id", callIds).order("created_at",{ascending:false}) : { data: [] };
@@ -253,15 +254,20 @@ async function renderSenior(id) {
 
   <h2>Schedules & reminders</h2>
   <div class="card">
-    ${(meds||[]).flatMap(m => (m.schedules||[]).map(sc => `
-      <div class="row">⏰ ${esc(m.name)} daily at
+    <b class="small">Daily call schedules</b>
+    ${(schedules||[]).map(sc => `
+      <div class="row">⏰ <span style="flex:1">${esc(sc.label)}</span>
         <input type="time" value="${esc(sc.call_time?.slice(0,5))}" onchange="updSchedule('${sc.id}', this.value)">
         <label class="small"><input type="checkbox" ${sc.active?"checked":""} onchange="toggleSchedule('${sc.id}', this.checked)"> active</label>
-      </div>`)).join("") || '<div class="muted small">no daily schedules</div>'}
+      </div>`).join("") || '<div class="muted small">no daily schedules yet</div>'}
+    <div class="row">➕ new daily call at
+      <input type="time" id="sch-time" value="10:00">
+      about <input type="text" id="sch-label" placeholder="what is this call about? (required)" style="flex:1">
+      <button class="btn" onclick="addSchedule('${id}')">Add</button></div>
     <div style="border-top:1px solid var(--line); margin:12px 0; padding-top:12px">
       <b class="small">One-off reminder call</b>
       <div class="row">in <input type="number" id="rem-min" value="30" min="1" style="width:70px"> minutes —
-        <input type="text" id="rem-why" placeholder="reason" value="medication reminder" style="flex:1">
+        about <input type="text" id="rem-why" placeholder="what is this reminder about? (required)" style="flex:1">
         <button class="btn" onclick="addReminder('${id}')">Schedule</button></div>
       ${(reminders||[]).map(r=>`<div class="row small">⏳ ${new Date(r.due_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})} — ${esc(r.reason)} <span class="badge info">${esc(r.source)}</span>
         <a style="cursor:pointer;color:var(--red)" onclick="cancelReminder('${r.id}')">cancel</a></div>`).join("")}
@@ -303,10 +309,23 @@ async function toggleSchedule(id, active) {
 }
 async function addReminder(seniorId) {
   const mins = parseInt(document.getElementById("rem-min").value || "30", 10);
-  const reason = document.getElementById("rem-why").value || "medication reminder";
+  const reason = document.getElementById("rem-why").value.trim();
+  if (!reason) return flash("Please describe what the reminder is about");
   const due = new Date(Date.now() + mins * 60000).toISOString();
   const { error } = await sb.from("reminders").insert({ senior_id: seniorId, due_at: due, reason, source: "caregiver" });
   flash(error ? "Failed: " + error.message : `Reminder call scheduled in ${mins} min`); render();
+}
+async function addSchedule(seniorId) {
+  const call_time = document.getElementById("sch-time").value;
+  const label = document.getElementById("sch-label").value.trim();
+  if (!label) return flash("Please describe what the call is about");
+  if (!call_time) return flash("Please pick a time");
+  // if the time already passed today, first call is tomorrow (not instantly)
+  const now = new Date();
+  const passed = call_time <= `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+  const { error } = await sb.from("schedules").insert({ senior_id: seniorId, call_time, label, active: true,
+    last_fired_on: passed ? now.toISOString().slice(0,10) : null });
+  flash(error ? "Failed: " + error.message : `Daily call added at ${call_time}${passed ? " (starts tomorrow)" : ""}`); render();
 }
 async function cancelReminder(id) {
   await sb.from("reminders").update({ status: "cancelled" }).eq("id", id);
