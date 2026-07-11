@@ -59,11 +59,10 @@ cp judge-agent/.env.example judge-agent/.env
 ```
 ANTHROPIC_API_KEY=...
 ELEVENLABS_API_KEY=...
-BASE_URL=https://<your-ngrok-url>
+BASE_URL=https://<your-ngrok-url>      # ngrok tunnel for voice-agent
 SUPABASE_URL=https://<project>.supabase.co
 SUPABASE_ANON_KEY=...
-BACKEND_URL=http://host.docker.internal:8080
-JUDGE_URL=http://host.docker.internal:8001
+# BACKEND_URL and JUDGE_URL are set automatically by docker-compose
 ```
 
 **`backend/.env`**
@@ -73,7 +72,7 @@ SUPABASE_SERVICE_ROLE_KEY=...
 TWILIO_ACCOUNT_SID=...
 TWILIO_AUTH_TOKEN=...
 TWILIO_FROM_NUMBER=+1...
-PUBLIC_BASE_URL=https://<your-ngrok-url>
+PUBLIC_BASE_URL=https://<your-ngrok-url>           # ngrok tunnel for backend
 VOICE_AGENT_TWIML_URL=https://<voice-agent-ngrok-url>/voice/incoming
 ```
 
@@ -84,35 +83,38 @@ ANTHROPIC_API_KEY=...
 
 ### 2. Start ngrok
 
-```bash
-ngrok http 8000   # voice-agent tunnel — copy URL into voice-agent/.env BASE_URL
-ngrok http 8080   # backend tunnel — copy URL into backend/.env PUBLIC_BASE_URL
-```
-
-### 3. Build and run
+Two tunnels — one for each public-facing service:
 
 ```bash
-# Voice agent
-docker build -t pill-buddy-voice voice-agent/
-docker run -d --name pill-buddy-voice --env-file voice-agent/.env -p 8000:8000 pill-buddy-voice
-
-# Backend
-docker build -t pill-buddy-backend backend/
-docker run -d --name pill-buddy-backend --env-file backend/.env -p 8080:8080 pill-buddy-backend
-
-# Judge agent (optional — enables self-improvement loop)
-docker build -t pill-buddy-judge judge-agent/
-docker run -d --name pill-buddy-judge --env-file judge-agent/.env -p 8001:8001 pill-buddy-judge
+ngrok http 8000   # voice-agent — copy URL into voice-agent/.env BASE_URL
+ngrok http 8080   # backend    — copy URL into backend/.env PUBLIC_BASE_URL
 ```
 
-### 4. Configure Twilio
+### 3. Build and start everything
+
+```bash
+docker compose up --build -d
+```
+
+All three services start together. Inter-service communication is handled automatically over Docker's internal network.
+
+### 4. Useful commands
+
+```bash
+docker compose logs -f                  # stream all logs
+docker compose logs -f voice-agent      # logs for one service
+docker compose up --build -d voice-agent  # rebuild + restart one service
+docker compose down                     # stop everything
+```
+
+### 5. Configure Twilio
 
 In your Twilio console, set the voice webhook for your number to:
 ```
 https://<voice-agent-ngrok-url>/voice/incoming
 ```
 
-### 5. Trigger a demo call
+### 6. Trigger a demo call
 
 ```bash
 # Call a specific senior by ID
