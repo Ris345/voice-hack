@@ -283,9 +283,14 @@ async function renderSenior(id) {
       about <input type="text" id="sch-label" placeholder="what is this call about? (required)" style="flex:1">
       <button class="btn" onclick="addSchedule('${id}')">Add</button></div>
     <div style="border-top:1px solid var(--line); margin:12px 0; padding-top:12px">
-      <b class="small">Schedule a one-off call</b>
-      <div class="row">📅 <button class="btn" onclick="openTimePicker('${id}')">Pick a time…</button>
-        <span class="small muted">alarm-style picker — choose when Emily calls and what to check on</span></div>
+      <b class="small">Schedule a one-off call <span class="muted" style="font-weight:400">(Eastern time)</span></b>
+      <div class="row">📅
+        <select id="sch-day"><option value="0">Today</option><option value="1">Tomorrow</option></select>
+        <select id="sch-h">${[...Array(12)].map((_,i)=>`<option>${i+1}</option>`).join("")}</select> :
+        <select id="sch-mm">${[...Array(12)].map((_,i)=>`<option>${String(i*5).padStart(2,"0")}</option>`).join("")}</select>
+        <select id="sch-ap"><option>AM</option><option>PM</option></select>
+        check on <input type="text" id="sch-why" placeholder="e.g. her knee (required)" style="flex:1">
+        <button class="btn" onclick="scheduleAt('${id}')">Schedule</button></div>
       <div class="row">⚡ or in <input type="number" id="rem-min" value="30" min="1" style="width:70px"> minutes —
         about <input type="text" id="rem-why" placeholder="what is this reminder about? (required)" style="flex:1">
         <button class="btn" onclick="addReminder('${id}')">Schedule</button></div>
@@ -347,66 +352,34 @@ async function addSchedule(seniorId) {
     last_fired_on: passed ? now.toISOString().slice(0,10) : null });
   flash(error ? "Failed: " + error.message : `Daily call added at ${call_time}${passed ? " (starts tomorrow)" : ""}`); render();
 }
-// ---------- iPhone-alarm-style time picker ----------
-const ITEM_H = 40;
-let PICK = { seniorId: null, dayOffset: 0 };
-
-function _wheelHtml(id, items) {
-  return `<div class="wheel" id="${id}"><div class="pad"></div>${
-    items.map(v => `<div>${v}</div>`).join("")}<div class="pad"></div></div>`;
+// ---------- schedule a call at a specific Eastern time ----------
+function _etNowParts() {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York",
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", hour12: false })
+    .formatToParts(new Date()).map(x => [x.type, x.value]));
+  return p; // {year, month, day, hour, minute}
 }
-function _setWheel(id, idx) { document.getElementById(id).scrollTop = idx * ITEM_H; }
-function _readWheel(id) { return Math.round(document.getElementById(id).scrollTop / ITEM_H); }
 
-function openTimePicker(seniorId) {
-  PICK = { seniorId, dayOffset: 0 };
-  const days = [...Array(7)].map((_, i) => {
-    const d = new Date(); d.setDate(d.getDate() + i);
-    return i === 0 ? "Today" : i === 1 ? "Tomorrow" : d.toLocaleDateString([], { weekday: "short", day: "numeric" });
-  });
-  const ov = document.createElement("div");
-  ov.className = "overlay"; ov.id = "picker-ov";
-  ov.onclick = e => { if (e.target === ov) closePicker(); };
-  ov.innerHTML = `<div class="sheet">
-    <h3>Schedule a call ⏰</h3>
-    <div class="days">${days.map((d, i) => `<span class="day${i===0?" on":""}" onclick="pickDay(${i},this)">${d}</span>`).join("")}</div>
-    <div class="wheels">
-      <div class="band"></div>
-      ${_wheelHtml("wh-h", [...Array(12)].map((_, i) => i + 1))}
-      ${_wheelHtml("wh-m", [...Array(12)].map((_, i) => String(i * 5).padStart(2, "0")))}
-      ${_wheelHtml("wh-ap", ["AM", "PM"])}
-    </div>
-    <input type="text" id="pick-why" placeholder="what should Emily check on? (required)">
-    <div class="actions">
-      <button class="ghost" onclick="closePicker()">Cancel</button>
-      <button class="btn" onclick="confirmPick()">Schedule call</button>
-    </div></div>`;
-  document.body.appendChild(ov);
-  // default: next hour, on the hour
-  const t = new Date(Date.now() + 60 * 60000);
-  const h12 = (t.getHours() % 12) || 12;
-  _setWheel("wh-h", h12 - 1); _setWheel("wh-m", 0); _setWheel("wh-ap", t.getHours() >= 12 ? 1 : 0);
-}
-function pickDay(i, el) {
-  PICK.dayOffset = i;
-  document.querySelectorAll(".day").forEach(d => d.classList.remove("on"));
-  el.classList.add("on");
-}
-function closePicker() { document.getElementById("picker-ov")?.remove(); }
-
-async function confirmPick() {
-  const reason = document.getElementById("pick-why").value.trim();
+async function scheduleAt(seniorId) {
+  const reason = document.getElementById("sch-why").value.trim();
   if (!reason) return flash("Please describe what Emily should check on");
-  const h12 = _readWheel("wh-h") + 1, min = _readWheel("wh-m") * 5, pm = _readWheel("wh-ap") === 1;
-  const due = new Date();
-  due.setDate(due.getDate() + PICK.dayOffset);
-  due.setHours((h12 % 12) + (pm ? 12 : 0), min, 0, 0);
-  if (due <= new Date()) return flash("That time already passed — pick a later time");
+  const dayOff = parseInt(document.getElementById("sch-day").value, 10);
+  const h12 = parseInt(document.getElementById("sch-h").value, 10);
+  const min = parseInt(document.getElementById("sch-mm").value, 10);
+  const pm = document.getElementById("sch-ap").value === "PM";
+  const h24 = (h12 % 12) + (pm ? 12 : 0);
+
+  // interpret the chosen wall-clock time as US Eastern (EDT, UTC-4 in July)
+  const et = _etNowParts();
+  const base = new Date(Date.UTC(+et.year, +et.month - 1, +et.day + dayOff, h24 + 4, min, 0));
+  if (base <= new Date()) return flash("That time already passed in ET — pick a later time");
+
   const { error } = await sb.from("reminders").insert({
-    senior_id: PICK.seniorId, due_at: due.toISOString(), reason, source: "caregiver" });
-  closePicker();
+    senior_id: seniorId, due_at: base.toISOString(), reason, source: "caregiver" });
   flash(error ? "Failed: " + error.message :
-    `📞 Emily will call ${due.toLocaleString([], {weekday:'short', hour:'numeric', minute:'2-digit'})}`);
+    `📞 Emily will call at ${h12}:${String(min).padStart(2,"0")} ${pm?"PM":"AM"} ET${dayOff?" tomorrow":""}`);
   render();
 }
 async function cancelReminder(id) {
