@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import httpx
 from fastapi import FastAPI, Form, HTTPException
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
@@ -218,14 +219,29 @@ def voice_placeholder(call_log_id: str = ""):
 
 @app.post("/twilio/status-callback")
 def status_callback(CallSid: str = Form(...), CallStatus: str = Form(...)):
-    """Twilio tells us the call finished. Safety net: if the voice agent never
-    posted a result (crash, no-answer), still update status and send the digest."""
+    """Twilio tells us the call finished. First give the voice agent a chance
+    to file its full report (summary + transcript + action items) — its session
+    is only in memory, and if the patient hangs up mid-call nothing else
+    triggers it. Then act as the safety net for status + digest."""
     rows = (
         supabase().table("call_logs").select("*").eq("twilio_call_sid", CallSid).execute()
     ).data
     if not rows:
         return {"ok": False}
     call = rows[0]
+
+    if settings.voice_agent_twiml_url:
+        agent_status_url = settings.voice_agent_twiml_url.replace(
+            "/voice/incoming", "/voice/status"
+        )
+        try:
+            httpx.post(
+                agent_status_url,
+                data={"CallSid": CallSid, "CallStatus": CallStatus},
+                timeout=20.0,  # includes the agent's LLM summarization
+            )
+        except Exception:
+            logging.getLogger(__name__).exception("agent finalize failed, using safety net")
 
     update: dict = {"ended_at": datetime.now(timezone.utc).isoformat()}
     if call["status"] not in ("completed",):  # don't clobber the agent's result
@@ -234,8 +250,13 @@ def status_callback(CallSid: str = Form(...), CallStatus: str = Form(...)):
 
     if CallStatus == "no-answer":
         raise_alert(call["id"], "no_answer", "Call was not answered.", "warn")
+
+    # refetch — the agent's report above may have already sent the digest
+    call = (
+        supabase().table("call_logs").select("digest_sent").eq("id", call["id"]).single().execute()
+    ).data
     if not call.get("digest_sent"):
-        send_digest(call["id"])
+        send_digest(rows[0]["id"])
     return {"ok": True}
 
 
