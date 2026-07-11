@@ -48,6 +48,12 @@
   input,select { font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; }
   .btn { background:var(--accent); color:#fff; border:none; border-radius:8px; padding:9px 16px; font-weight:600; cursor:pointer; font-size:14px; }
   .btn:disabled { opacity:.5; }
+  .layout { display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:18px; align-items:start; }
+  .layout aside { position:sticky; top:76px; }
+  @media (max-width:800px) { .layout { grid-template-columns:1fr; } .layout aside { position:static; } }
+  .cg { padding:10px 0; border-bottom:1px solid var(--line); }
+  .cg:last-child { border-bottom:none; }
+  .cg b { font-size:15px; }
   #login { max-width:360px; margin:80px auto; text-align:center; }
   #login input { width:100%; margin-bottom:10px; }
   #login .btn { width:100%; }
@@ -201,7 +207,16 @@ async function renderSenior(id) {
   const answered = (calls||[]).filter(c=>c.meds_confirmed!==null).length;
 
   const openActions = (actions||[]).filter(a=>a.status==="open");
+  const careTeam = `<div class="card"><h2 style="margin:0 0 8px">Care team 👥</h2>
+    ${(rels||[]).map(r=>`<div class="cg"><b>${esc(r.caregivers.name)}</b>
+      ${r.is_primary?'<span class="badge primary">primary</span>':""}
+      <div class="small muted">${esc(r.relationship)}</div>
+      <div class="small">${phoneHtml(r.caregivers.phone, "cg-"+r.caregivers.id)}</div>
+      ${r.caregivers.email?`<div class="small muted">${esc(r.caregivers.email)}</div>`:""}</div>`).join("")}
+    <div class="small muted" style="margin-top:8px">The primary caregiver receives WhatsApp alerts and call digests.</div>
+  </div>`;
   app.innerHTML = `<span class="back" onclick="VIEW={page:'home'};render()">← back to loved ones</span>
+  <div class="layout"><div>
   <div class="card"><h3 style="font-size:22px">${esc(s.name)}</h3>
     <div class="rel">your ${esc(s.relationship)} · ${phoneHtml(s.phone, "det-"+s.id)}</div>
     ${last?.wellness_note ? `<div class="wellness">🌤️ ${esc(last.wellness_note)}</div>` : ""}
@@ -218,10 +233,6 @@ async function renderSenior(id) {
     <div class="row" style="align-items:flex-start">💊 Prescriptions:</div>
     ${(meds||[]).map(m=>`<div class="row small" style="margin-left:24px">${esc(m.name)} ${esc(m.dosage)}${m.instructions?` — ${esc(m.instructions)}`:""}</div>`).join("") || '<div class="muted small" style="margin-left:24px">none on file</div>'}
     ${s.notes ? `<div class="row small">📝 ${esc(s.notes)}</div>` : ""}
-    <div class="row" style="align-items:flex-start">👥 Care team:</div>
-    ${(rels||[]).map(r=>`<div class="row small" style="margin-left:24px">
-      ${esc(r.caregivers.name)} — ${esc(r.relationship)}${r.is_primary?' <span class="badge primary">primary</span>':""}
-      · ${phoneHtml(r.caregivers.phone, "cg-"+r.caregivers.id)}${r.caregivers.email?` · ${esc(r.caregivers.email)}`:""}</div>`).join("")}
   </div>
 
   <h2>Suggested for you ✨ <span class="small muted" style="font-weight:400">from Emily's conversations</span></h2>
@@ -265,7 +276,8 @@ async function renderSenior(id) {
         <td>${esc(c.status)}</td><td>${meds3(c.meds_confirmed)}</td>
         <td>${esc(c.transcript_summary || "")}<div class="small muted">${c.transcript?.length ? "click to view transcript" : ""}</div></td></tr>
       <tr id="tx-${i}" style="display:none"><td colspan="4">${transcriptHtml(c.transcript)}</td></tr>`).join("")
-      || "<tr><td class='muted' colspan='4'>no calls yet</td></tr>"}</table></div>`;
+      || "<tr><td class='muted' colspan='4'>no calls yet</td></tr>"}</table></div>
+  </div><aside>${careTeam}</aside></div>`;
 }
 
 function transcriptHtml(t) {
