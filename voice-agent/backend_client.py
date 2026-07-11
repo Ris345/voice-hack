@@ -33,6 +33,7 @@ def report_result(
     meds_confirmed: bool | None,
     transcript: list[dict] | None = None,
     wellness_note: str = "",
+    action_items: list[dict] | None = None,
 ) -> None:
     """End of conversation → marks call completed, triggers caregiver digest."""
     if not call_log_id:
@@ -46,6 +47,7 @@ def report_result(
                 "meds_confirmed": meds_confirmed,
                 "transcript": transcript,
                 "wellness_note": wellness_note,
+                "action_items": action_items or [],
             },
             timeout=15,  # includes an LLM summary upstream; give it headroom
         ).raise_for_status()

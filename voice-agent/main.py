@@ -100,6 +100,9 @@ async def incoming(
 
     notes = patient.get("notes", "")
     grandkid_names = patient.get("grandkid_names", [])
+    past_calls = patients.call_history_context(patient.get("senior_id", ""))
+    if past_calls:
+        print(f"[TX {CallSid[:8]}] continuity context:\n{past_calls}", flush=True)
 
     session = sessions.create(
         call_sid=CallSid,
@@ -110,6 +113,7 @@ async def incoming(
         notes=notes,
         grandkid_names=grandkid_names,
     )
+    session["pastCalls"] = past_calls
 
     result = agent.run_turn(
         history=session["history"],
@@ -119,6 +123,7 @@ async def incoming(
         med_summary=summary,
         notes=notes,
         grandkid_names=grandkid_names,
+        past_calls=past_calls,
     )
 
     _update_session_from_result(CallSid, result)
@@ -221,12 +226,14 @@ def _report_call_result(session: dict | None) -> None:
     transcript = session.get("transcript", [])
 
     if transcript:
-        summarized = agent.summarize(transcript, name)
+        summarized = agent.summarize(transcript, name, session.get("pastCalls", ""))
         summary = summarized.get("summary", f"Completed a check-in call with {name}.")
         wellness_note = summarized.get("wellness_note", "")
+        action_items = summarized.get("action_items", [])
     else:
         summary = f"Call with {name} ended before any conversation."
         wellness_note = ""
+        action_items = []
 
     backend_client.report_result(
         session.get("callLogId", ""),
@@ -234,6 +241,7 @@ def _report_call_result(session: dict | None) -> None:
         meds_confirmed,
         transcript=[{"speaker": s, "text": t} for s, t in transcript],
         wellness_note=wellness_note,
+        action_items=action_items,
     )
 
 

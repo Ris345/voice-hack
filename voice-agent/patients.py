@@ -61,6 +61,41 @@ def get_patient(phone: str) -> dict[str, Any] | None:
     return _PATIENTS.get(phone)
 
 
+def call_history_context(senior_id: str, limit: int = 3) -> str:
+    """Compact digest of recent calls so the agent has continuity —
+    what was discussed, how they seemed, what to follow up on."""
+    if not (SUPABASE_URL and SUPABASE_KEY and senior_id):
+        return ""
+    try:
+        resp = requests.get(
+            f"{SUPABASE_URL}/rest/v1/call_logs",
+            params={
+                "senior_id": f"eq.{senior_id}",
+                "status": "eq.completed",
+                "select": "started_at,transcript_summary,wellness_note,meds_confirmed",
+                "order": "started_at.desc",
+                "limit": str(limit),
+            },
+            headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
+            timeout=5,
+        )
+        resp.raise_for_status()
+        lines = []
+        for c in resp.json():
+            if not (c.get("transcript_summary") or c.get("wellness_note")):
+                continue
+            day = (c.get("started_at") or "")[:10]
+            meds = {True: "meds taken", False: "meds MISSED", None: "meds unconfirmed"}[
+                c.get("meds_confirmed")
+            ]
+            bits = [b for b in (c.get("transcript_summary"), c.get("wellness_note")) if b]
+            lines.append(f"- {day} ({meds}): {' '.join(bits)}")
+        return "\n".join(lines)
+    except Exception as e:
+        print(f"[patients] call history lookup failed: {e}")
+        return ""
+
+
 def med_summary(patient: dict[str, Any]) -> str:
     meds = patient.get("medications", [])
     if not meds:

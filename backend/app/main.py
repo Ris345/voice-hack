@@ -113,6 +113,7 @@ class CallResultIn(BaseModel):
     meds_confirmed: bool | None = None
     transcript: list[dict] | None = None  # [{speaker, text}, ...]
     wellness_note: str | None = None
+    action_items: list[dict] = []  # [{text, priority}]
 
 
 @app.post("/calls/{call_log_id}/result")
@@ -129,6 +130,24 @@ def write_call_result(call_log_id: str, body: CallResultIn):
     if body.wellness_note is not None:
         update["wellness_note"] = body.wellness_note
     supabase().table("call_logs").update(update).eq("id", call_log_id).execute()
+
+    if body.action_items:
+        call = (
+            supabase().table("call_logs").select("senior_id").eq("id", call_log_id).single().execute()
+        ).data
+        supabase().table("action_items").insert(
+            [
+                {
+                    "senior_id": call["senior_id"],
+                    "text": a.get("text", ""),
+                    "priority": a.get("priority", "normal"),
+                    "source_call_id": call_log_id,
+                }
+                for a in body.action_items
+                if a.get("text")
+            ]
+        ).execute()
+
     sent = send_digest(call_log_id)
     return {"ok": True, "digest_sent": sent}
 

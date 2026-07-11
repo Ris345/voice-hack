@@ -83,6 +83,17 @@ const ago = t => { if (!t) return "—"; const s = (Date.now()-new Date(t))/1e3;
   if (s<90) return "just now"; if (s<3600) return `${Math.round(s/60)}m ago`;
   if (s<86400) return `${Math.round(s/3600)}h ago`; return `${Math.round(s/86400)}d ago`; };
 const meds3 = v => v===true ? "✅" : v===false ? "❌" : "—";
+const age = dob => dob ? Math.floor((Date.now()-new Date(dob))/3.15576e10) : null;
+
+// phone numbers are masked; the eye toggles the real number
+window._shown = {};
+const phoneHtml = (phone, key) => `<span id="ph-${key}">••• ••• ••••</span>
+  <a style="cursor:pointer" title="show/hide number" onclick="event.stopPropagation();togglePhone('${key}','${esc(phone)}')">👁️</a>`;
+window.togglePhone = (key, phone) => {
+  const el = document.getElementById("ph-" + key); if (!el) return;
+  window._shown[key] = !window._shown[key];
+  el.textContent = window._shown[key] ? phone : "••• ••• ••••";
+};
 
 // ---------- auth ----------
 async function init() {
@@ -143,17 +154,19 @@ async function renderHome() {
   const callsBySenior = {}; (calls||[]).forEach(c => (callsBySenior[c.senior_id] ??= []).push(c));
   const callIds = (calls||[]).map(c=>c.id);
   const { data: alerts } = callIds.length ? await sb.from("alerts").select("*, call_logs(senior_id, seniors(name))").in("call_log_id", callIds).order("created_at",{ascending:false}) : { data: [] };
+  const { data: openActions } = await sb.from("action_items").select("senior_id").eq("status","open").in("senior_id", ids.length?ids:["-"]);
 
   const cards = SENIORS.map(s => {
     const sc = callsBySenior[s.id] || [];
     const last = sc[0];
     const nAlerts = (alerts||[]).filter(a => a.call_logs?.senior_id === s.id).length;
+    const nActions = (openActions||[]).filter(a => a.senior_id === s.id).length;
     return `<div class="card senior-card" onclick="VIEW={page:'senior',seniorId:'${s.id}'};render()">
       <h3>${esc(s.name)} ${s.is_primary ? '<span class="badge primary">primary caregiver</span>' : ''}</h3>
-      <div class="rel">your ${esc(s.relationship)} · ${esc(s.phone)}</div>
+      <div class="rel">your ${esc(s.relationship)} · ${phoneHtml(s.phone, "card-"+s.id)}</div>
       <div class="row">📞 Last call: ${last ? `${ago(last.started_at)} (${esc(last.status)})` : "no calls yet"}</div>
       <div class="row">💊 Meds confirmed: ${last ? meds3(last.meds_confirmed) : "—"}</div>
-      <div class="row">🔔 ${nAlerts} alert${nAlerts===1?"":"s"}</div>
+      <div class="row">🔔 ${nAlerts} alert${nAlerts===1?"":"s"} ${nActions ? `· ✨ ${nActions} suggestion${nActions===1?"":"s"}` : ""}</div>
       ${adherenceDots(sc)}</div>`;
   }).join("");
 
@@ -174,11 +187,12 @@ function adherenceDots(calls) {
 
 async function renderSenior(id) {
   const s = SENIORS.find(x => x.id === id); if (!s) return renderHome();
-  const [{ data: meds }, { data: calls }, { data: rels }, { data: reminders }] = await Promise.all([
+  const [{ data: meds }, { data: calls }, { data: rels }, { data: reminders }, { data: actions }] = await Promise.all([
     sb.from("medications").select("*, schedules(*)").eq("senior_id", id),
     sb.from("call_logs").select("*").eq("senior_id", id).order("started_at", { ascending: false }).limit(25),
     sb.from("care_relationships").select("relationship, is_primary, caregivers(name)").eq("senior_id", id),
     sb.from("reminders").select("*").eq("senior_id", id).eq("status","pending").order("due_at"),
+    sb.from("action_items").select("*").eq("senior_id", id).order("created_at", { ascending: false }).limit(20),
   ]);
   const callIds = (calls||[]).map(c=>c.id);
   const { data: alerts } = callIds.length ? await sb.from("alerts").select("*").in("call_log_id", callIds).order("created_at",{ascending:false}) : { data: [] };
@@ -186,16 +200,36 @@ async function renderSenior(id) {
   const confirmed = (calls||[]).filter(c=>c.meds_confirmed===true).length;
   const answered = (calls||[]).filter(c=>c.meds_confirmed!==null).length;
 
+  const openActions = (actions||[]).filter(a=>a.status==="open");
   app.innerHTML = `<span class="back" onclick="VIEW={page:'home'};render()">← back to loved ones</span>
   <div class="card"><h3 style="font-size:22px">${esc(s.name)}</h3>
-    <div class="rel">your ${esc(s.relationship)} · ${esc(s.phone)}</div>
-    ${s.notes ? `<div class="row small">📝 ${esc(s.notes)}</div>` : ""}
-    <div class="row">💊 ${(meds||[]).map(m=>`${esc(m.name)} ${esc(m.dosage)}`).join(" · ") || "no medications on file"}</div>
-    <div class="row">Care team: ${(rels||[]).map(r=>`${esc(r.caregivers.name)} (${esc(r.relationship)}${r.is_primary?", primary":""})`).join(", ")}</div>
+    <div class="rel">your ${esc(s.relationship)} · ${phoneHtml(s.phone, "det-"+s.id)}</div>
     ${last?.wellness_note ? `<div class="wellness">🌤️ ${esc(last.wellness_note)}</div>` : ""}
     ${last?.transcript_summary ? `<div class="row small">Last call: ${esc(last.transcript_summary)}</div>` : ""}
     <div class="row small">Adherence (last 25 calls): ${answered ? Math.round(100*confirmed/answered)+"%" : "—"}</div>
     ${adherenceDots(calls||[])}</div>
+
+  <h2>Patient profile</h2>
+  <div class="card">
+    <div class="row">🎂 ${s.date_of_birth ? `${new Date(s.date_of_birth).toLocaleDateString([], {year:'numeric',month:'long',day:'numeric'})} (age ${age(s.date_of_birth)})` : "date of birth not on file"}</div>
+    <div class="row">🩺 Conditions: ${(s.conditions||[]).map(esc).join(" · ") || "none on file"}</div>
+    <div class="row">⚠️ Allergies: ${(s.allergies||[]).map(esc).join(" · ") || "none on file"}</div>
+    <div class="row">👨‍⚕️ ${esc(s.primary_doctor || "no primary doctor on file")}</div>
+    <div class="row" style="align-items:flex-start">💊 Prescriptions:</div>
+    ${(meds||[]).map(m=>`<div class="row small" style="margin-left:24px">${esc(m.name)} ${esc(m.dosage)}${m.instructions?` — ${esc(m.instructions)}`:""}</div>`).join("") || '<div class="muted small" style="margin-left:24px">none on file</div>'}
+    ${s.notes ? `<div class="row small">📝 ${esc(s.notes)}</div>` : ""}
+    <div class="row small">Care team: ${(rels||[]).map(r=>`${esc(r.caregivers.name)} (${esc(r.relationship)}${r.is_primary?", primary":""})`).join(", ")}</div>
+  </div>
+
+  <h2>Suggested for you ✨ <span class="small muted" style="font-weight:400">from Emily's conversations</span></h2>
+  <div class="card">
+    ${openActions.map(a=>`<div class="row" style="align-items:flex-start">
+      <input type="checkbox" onchange="doneAction('${a.id}')" title="mark done">
+      ${a.priority==="high"?'<span class="badge urgent">high</span>':""}
+      <span>${esc(a.text)}<div class="small muted">${ago(a.created_at)}</div></span></div>`).join("")
+      || '<div class="muted small">Nothing right now — Emily will suggest follow-ups here after her calls.</div>'}
+    ${(actions||[]).filter(a=>a.status==="done").slice(0,3).map(a=>`<div class="row small muted" style="text-decoration:line-through">✓ ${esc(a.text)}</div>`).join("")}
+  </div>
 
   <h2>Schedules & reminders</h2>
   <div class="card">
@@ -256,6 +290,10 @@ async function addReminder(seniorId) {
 async function cancelReminder(id) {
   await sb.from("reminders").update({ status: "cancelled" }).eq("id", id);
   flash("Reminder cancelled"); render();
+}
+async function doneAction(id) {
+  const { error } = await sb.from("action_items").update({ status: "done" }).eq("id", id);
+  flash(error ? "Failed: " + error.message : "Nice — marked done ✓"); render();
 }
 
 init();

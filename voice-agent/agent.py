@@ -105,6 +105,7 @@ def run_turn(
     med_summary: str,
     notes: str = "",
     grandkid_names: list[str] = [],
+    past_calls: str = "",
 ) -> dict[str, Any]:
     """Process one conversation turn."""
 
@@ -115,6 +116,13 @@ def run_turn(
             personality += f"\nPersonality notes: {notes}"
         if grandkid_names:
             personality += f"\nGrandchildren: {', '.join(grandkid_names)}"
+        if past_calls:
+            personality += (
+                f"\nRecent check-ins (use for continuity — follow up naturally on "
+                f"things they mentioned, e.g. 'how's the knee feeling today?', and "
+                f"gently re-confirm anything that was missed; never recite this list):\n"
+                f"{past_calls}"
+            )
 
         context = (
             f"[PATIENT PROFILE]\n"
@@ -155,27 +163,42 @@ def run_turn(
     return result
 
 
-def summarize(transcript: list[tuple[str, str]], patient_name: str) -> dict[str, str]:
-    """Post-call: turn the transcript into a caregiver-facing summary and a
-    wellness note. Falls back to a generic line if the model call fails."""
+def summarize(
+    transcript: list[tuple[str, str]], patient_name: str, past_calls: str = ""
+) -> dict[str, Any]:
+    """Post-call: caregiver-facing summary, wellness note, and action items —
+    informed by this call AND the recent history (recurring pain, repeated
+    missed doses, requests for family contact...)."""
     convo = "\n".join(f"{speaker}: {text}" for speaker, text in transcript)
+    context = f"Patient: {patient_name}\n"
+    if past_calls:
+        context += f"\nRecent check-in history:\n{past_calls}\n"
+    context += f"\nToday's call:\n{convo}"
     try:
         resp = _client.messages.create(
             model=_MODEL,
-            max_tokens=300,
+            max_tokens=500,
             system=(
-                "You summarize an eldercare check-in call for the patient's family. "
+                "You review an eldercare check-in call for the patient's family "
+                "caregiver. Consider today's call AND the recent history — spot "
+                "patterns (recurring pain, repeated missed doses, loneliness). "
                 "Reply with JSON only: "
                 '{"summary": "<2-3 warm plain-English sentences: what was discussed, '
                 'medication outcome, anything the family should know>", '
-                '"wellness_note": "<1 sentence on mood/health signals, e.g. '
-                "'Sounded cheerful; mentioned knee pain again.'>\"}"
+                '"wellness_note": "<1 sentence on mood/health signals>", '
+                '"action_items": [{"text": "<concrete thing the caregiver should do, '
+                "e.g. 'Ask her doctor about the recurring knee pain — mentioned 3 calls "
+                "in a row'>\", \"priority\": \"<normal|high>\"}] — 0 to 3 items, only "
+                "genuinely useful ones, empty list if nothing actionable}"
             ),
-            messages=[{"role": "user", "content": f"Patient: {patient_name}\n\n{convo}"}],
+            messages=[{"role": "user", "content": context}],
         )
-        return _strip_json(resp.content[0].text)
+        result = _strip_json(resp.content[0].text)
+        result.setdefault("action_items", [])
+        return result
     except Exception:
         return {
             "summary": f"Completed a check-in call with {patient_name}.",
             "wellness_note": "",
+            "action_items": [],
         }

@@ -15,6 +15,10 @@ create table seniors (
   phone text not null unique,
   grandkid_names text[] not null default '{}',
   notes text,                          -- personality hooks: hobbies, recent topics
+  date_of_birth date,                  -- medical profile, shown to caregivers
+  conditions text[] not null default '{}',
+  allergies text[] not null default '{}',
+  primary_doctor text,
   created_at timestamptz not null default now()
 );
 create index seniors_phone_idx on seniors (phone);
@@ -79,6 +83,18 @@ create table call_logs (
 );
 create index call_logs_senior_idx on call_logs (senior_id);
 create index call_logs_sid_idx on call_logs (twilio_call_sid);
+
+-- AI-generated caregiver to-dos, distilled from current + past calls
+create table action_items (
+  id uuid primary key default gen_random_uuid(),
+  senior_id uuid not null references seniors(id) on delete cascade,
+  text text not null,
+  priority text not null default 'normal',     -- normal | high
+  status text not null default 'open',         -- open | done
+  source_call_id uuid references call_logs(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+create index action_items_senior_idx on action_items (senior_id) where status = 'open';
 
 create table alerts (
   id uuid primary key default gen_random_uuid(),
