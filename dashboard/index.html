@@ -54,6 +54,24 @@
   .cg { padding:10px 0; border-bottom:1px solid var(--line); }
   .cg:last-child { border-bottom:none; }
   .cg b { font-size:15px; }
+  /* iPhone-alarm-style time picker */
+  .overlay { position:fixed; inset:0; background:rgba(61,50,41,.45); display:flex; align-items:center; justify-content:center; z-index:30; }
+  .sheet { background:var(--card); border-radius:22px; padding:22px; width:min(360px, 92vw); box-shadow:0 18px 50px rgba(60,40,20,.25); }
+  .sheet h3 { text-align:center; margin-bottom:12px; }
+  .days { display:flex; gap:6px; overflow-x:auto; padding-bottom:6px; }
+  .day { flex:0 0 auto; padding:6px 12px; border-radius:99px; border:1px solid var(--line); cursor:pointer; font-size:13px; background:var(--card); color:var(--ink); }
+  .day.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .wheels { display:flex; gap:2px; position:relative; height:200px; margin:14px 0; }
+  .wheel { flex:1; overflow-y:scroll; scroll-snap-type:y mandatory; scrollbar-width:none; }
+  .wheel::-webkit-scrollbar { display:none; }
+  .wheel div { height:40px; line-height:40px; text-align:center; scroll-snap-align:center; font-size:20px; font-variant-numeric:tabular-nums; }
+  .wheel .pad { height:80px; }
+  .band { position:absolute; top:80px; left:0; right:0; height:40px; pointer-events:none;
+          background:rgba(224,122,95,.10); border-radius:10px; border:1px solid rgba(224,122,95,.25); }
+  .sheet input[type=text] { width:100%; margin:6px 0 14px; }
+  .sheet .actions { display:flex; gap:10px; }
+  .sheet .actions .btn { flex:1; }
+  .sheet .actions .ghost { background:none; border:1px solid var(--line); color:var(--muted); border-radius:8px; cursor:pointer; }
   #login { max-width:360px; margin:80px auto; text-align:center; }
   #login input { width:100%; margin-bottom:10px; }
   #login .btn { width:100%; }
@@ -266,9 +284,8 @@ async function renderSenior(id) {
       <button class="btn" onclick="addSchedule('${id}')">Add</button></div>
     <div style="border-top:1px solid var(--line); margin:12px 0; padding-top:12px">
       <b class="small">Schedule a one-off call</b>
-      <div class="row">📅 at <input type="datetime-local" id="rem-at">
-        to check on <input type="text" id="rem-at-why" placeholder="e.g. how her knee is after the doctor visit (required)" style="flex:1">
-        <button class="btn" onclick="addReminderAt('${id}')">Schedule</button></div>
+      <div class="row">📅 <button class="btn" onclick="openTimePicker('${id}')">Pick a time…</button>
+        <span class="small muted">alarm-style picker — choose when Emily calls and what to check on</span></div>
       <div class="row">⚡ or in <input type="number" id="rem-min" value="30" min="1" style="width:70px"> minutes —
         about <input type="text" id="rem-why" placeholder="what is this reminder about? (required)" style="flex:1">
         <button class="btn" onclick="addReminder('${id}')">Schedule</button></div>
@@ -330,15 +347,67 @@ async function addSchedule(seniorId) {
     last_fired_on: passed ? now.toISOString().slice(0,10) : null });
   flash(error ? "Failed: " + error.message : `Daily call added at ${call_time}${passed ? " (starts tomorrow)" : ""}`); render();
 }
-async function addReminderAt(seniorId) {
-  const at = document.getElementById("rem-at").value;
-  const reason = document.getElementById("rem-at-why").value.trim();
-  if (!at) return flash("Please pick a date and time");
-  if (!reason) return flash("Please describe what to check on");
-  const due = new Date(at);
-  if (due <= new Date()) return flash("That time is in the past — pick a future time");
-  const { error } = await sb.from("reminders").insert({ senior_id: seniorId, due_at: due.toISOString(), reason, source: "caregiver" });
-  flash(error ? "Failed: " + error.message : `Call scheduled for ${due.toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}`); render();
+// ---------- iPhone-alarm-style time picker ----------
+const ITEM_H = 40;
+let PICK = { seniorId: null, dayOffset: 0 };
+
+function _wheelHtml(id, items) {
+  return `<div class="wheel" id="${id}"><div class="pad"></div>${
+    items.map(v => `<div>${v}</div>`).join("")}<div class="pad"></div></div>`;
+}
+function _setWheel(id, idx) { document.getElementById(id).scrollTop = idx * ITEM_H; }
+function _readWheel(id) { return Math.round(document.getElementById(id).scrollTop / ITEM_H); }
+
+function openTimePicker(seniorId) {
+  PICK = { seniorId, dayOffset: 0 };
+  const days = [...Array(7)].map((_, i) => {
+    const d = new Date(); d.setDate(d.getDate() + i);
+    return i === 0 ? "Today" : i === 1 ? "Tomorrow" : d.toLocaleDateString([], { weekday: "short", day: "numeric" });
+  });
+  const ov = document.createElement("div");
+  ov.className = "overlay"; ov.id = "picker-ov";
+  ov.onclick = e => { if (e.target === ov) closePicker(); };
+  ov.innerHTML = `<div class="sheet">
+    <h3>Schedule a call ⏰</h3>
+    <div class="days">${days.map((d, i) => `<span class="day${i===0?" on":""}" onclick="pickDay(${i},this)">${d}</span>`).join("")}</div>
+    <div class="wheels">
+      <div class="band"></div>
+      ${_wheelHtml("wh-h", [...Array(12)].map((_, i) => i + 1))}
+      ${_wheelHtml("wh-m", [...Array(12)].map((_, i) => String(i * 5).padStart(2, "0")))}
+      ${_wheelHtml("wh-ap", ["AM", "PM"])}
+    </div>
+    <input type="text" id="pick-why" placeholder="what should Emily check on? (required)">
+    <div class="actions">
+      <button class="ghost" onclick="closePicker()">Cancel</button>
+      <button class="btn" onclick="confirmPick()">Schedule call</button>
+    </div></div>`;
+  document.body.appendChild(ov);
+  // default: next hour, on the hour
+  const t = new Date(Date.now() + 60 * 60000);
+  const h12 = (t.getHours() % 12) || 12;
+  _setWheel("wh-h", h12 - 1); _setWheel("wh-m", 0); _setWheel("wh-ap", t.getHours() >= 12 ? 1 : 0);
+}
+function pickDay(i, el) {
+  PICK.dayOffset = i;
+  document.querySelectorAll(".day").forEach(d => d.classList.remove("on"));
+  el.classList.add("on");
+}
+function closePicker() { document.getElementById("picker-ov")?.remove(); }
+
+async function confirmPick() {
+  const reason = document.getElementById("pick-why").value.trim();
+  if (!reason) return flash("Please describe what Emily should check on");
+  const h12 = _readWheel("wh-h") + 1, min = _readWheel("wh-m") * 5, pm = _readWheel("wh-ap") === 1;
+  const due = new Date();
+  due.setDate(due.getDate() + PICK.dayOffset);
+  due.setHours((h12 % 12) + (pm ? 12 : 0), min, 0, 0);
+  if (due <= new Date()) return flash("That time already passed — pick a later time");
+  const { error } = await sb.from("reminders").insert({
+    senior_id: PICK.seniorId, due_at: due.toISOString(), reason, source: "caregiver" });
+  closePicker();
+  flash(error ? "Failed: " + error.message :
+    `📞 Emily will call ${due.toLocaleString([], {weekday:'short', hour:'numeric', minute:'2-digit'})}`);
+  render();
 }
 async function cancelReminder(id) {
   await sb.from("reminders").update({ status: "cancelled" }).eq("id", id);
