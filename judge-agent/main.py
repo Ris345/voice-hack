@@ -14,7 +14,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI
+from fastapi import BackgroundTasks, FastAPI
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
@@ -42,19 +42,14 @@ class CallData(BaseModel):
     history: list[dict]   # list of {role, content}
 
 
-@app.post("/evaluate")
-def evaluate_call(data: CallData):
-    """Voice agent calls this at the end of every conversation."""
-    if len(data.history) < 2:
-        return {"ok": False, "reason": "transcript too short to evaluate"}
-
+def _run_evaluation(data: CallData) -> None:
+    """Runs in background — called after we've already returned 200 to voice agent."""
     result = judge.evaluate(
         history=data.history,
         patient_name=data.patient_name,
         med_summary=data.med_summary,
         notes=data.notes,
     )
-
     entry = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "patient": data.patient_name,
@@ -62,10 +57,8 @@ def evaluate_call(data: CallData):
         "overall": result["overall"],
         "lessons": result["lessons"],
     }
-
     learnings = _load_learnings()
     learnings.append(entry)
-    # Keep only the 20 most recent so the prompt doesn't balloon
     learnings = learnings[-20:]
     _save_learnings(learnings)
 
@@ -73,7 +66,15 @@ def evaluate_call(data: CallData):
     for lesson in result["lessons"]:
         print(f"  → {lesson}")
 
-    return {"ok": True, "overall": result["overall"], "lessons": result["lessons"]}
+
+@app.post("/evaluate")
+def evaluate_call(data: CallData, background_tasks: BackgroundTasks):
+    """Voice agent calls this at the end of every conversation.
+    Returns immediately — evaluation runs in the background."""
+    if len(data.history) < 2:
+        return {"ok": False, "reason": "transcript too short to evaluate"}
+    background_tasks.add_task(_run_evaluation, data)
+    return {"ok": True, "queued": True}
 
 
 @app.get("/learnings")
