@@ -13,7 +13,7 @@ from ..db import supabase
 
 log = logging.getLogger(__name__)
 
-POLL_SECONDS = 20
+POLL_SECONDS = 5  # tight loop: schedule-to-ring feels instant in a live demo
 
 
 def _due_reminders() -> list[dict]:
