@@ -47,9 +47,9 @@ def say_and_gather(text: str) -> str:
     audio_url = _audio_url(text)
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
+  <Play>{audio_url}</Play>
   <Gather input="speech" action="{GATHER_URL}" method="POST"
           speechTimeout="auto" speechModel="experimental_conversations" enhanced="true">
-    <Play>{audio_url}</Play>
   </Gather>
   <Redirect method="POST">{GATHER_URL}</Redirect>
 </Response>"""
@@ -92,12 +92,17 @@ async def incoming(
     name = patient["name"]
     summary = patients.med_summary(patient)
 
+    notes = patient.get("notes", "")
+    grandkid_names = patient.get("grandkid_names", [])
+
     session = sessions.create(
         call_sid=CallSid,
         patient_name=name,
         phone=phone,
         med_summary=summary,
         call_log_id=call_log_id,
+        notes=notes,
+        grandkid_names=grandkid_names,
     )
 
     result = agent.run_turn(
@@ -106,6 +111,8 @@ async def incoming(
         user_speech="",
         patient_name=name,
         med_summary=summary,
+        notes=notes,
+        grandkid_names=grandkid_names,
     )
 
     _update_session_from_result(CallSid, result)
@@ -137,6 +144,8 @@ async def gather(
         user_speech=user_speech,
         patient_name=session["patientName"],
         med_summary=session["medSummary"],
+        notes=session.get("notes", ""),
+        grandkid_names=session.get("grandkidNames", []),
     )
 
     _update_session_from_result(CallSid, result)
