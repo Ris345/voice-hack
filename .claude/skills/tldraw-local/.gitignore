@@ -1,0 +1,8 @@
+# Dependencies (reinstalled by scripts/setup.sh)
+app/node_modules/
+
+# Runtime board state — user-specific, do not ship
+app/data/
+
+# Logs
+*.log
