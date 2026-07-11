@@ -88,8 +88,15 @@ If the patient says goodbye or wants to end the call, move to closing gracefully
 
 
 def _strip_json(raw: str) -> dict[str, Any]:
-    raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-    return json.loads(raw)
+    cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    if not cleaned:
+        raise ValueError(f"Claude returned empty response. Raw: {raw!r}")
+    # Find the first { ... } block in case Claude adds surrounding text
+    start = cleaned.find("{")
+    end = cleaned.rfind("}") + 1
+    if start != -1 and end > start:
+        cleaned = cleaned[start:end]
+    return json.loads(cleaned)
 
 
 def _goodbye_signal(text: str) -> bool:
@@ -159,10 +166,14 @@ def run_turn(
         system=system,
         messages=messages,
     )
-    raw = resp.content[0].text
-    result = _strip_json(raw)
+    raw = resp.content[0].text if resp.content else ""
+    try:
+        result = _strip_json(raw)
+    except (json.JSONDecodeError, ValueError) as e:
+        print(f"[agent] JSON parse failed: {e} | raw={raw!r}", flush=True)
+        result = {}
 
-    result.setdefault("speech", "I'm sorry, I didn't quite catch that — could you say that again?")
+    result.setdefault("speech", "I'm sorry, I didn't catch that — could you say that again?")
     result.setdefault("next_stage", stage)
     result.setdefault("med_status", "unknown")
     result.setdefault("should_close", False)
