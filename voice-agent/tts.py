@@ -12,7 +12,6 @@ from pathlib import Path
 from elevenlabs.client import ElevenLabs
 
 _client = ElevenLabs(api_key=os.environ["ELEVENLABS_API_KEY"])
-_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL")  # "Bella" — warm, gentle
 _MODEL = "eleven_turbo_v2_5"  # lowest latency model
 
 AUDIO_DIR = Path("/tmp/pill_buddy_audio")
@@ -28,7 +27,7 @@ def synthesize(text: str) -> str:
     path = AUDIO_DIR / f"{file_id}.mp3"
 
     audio_stream = _client.text_to_speech.convert(
-        voice_id=_VOICE_ID,
+        voice_id="Bella",
         text=text,
         model_id=_MODEL,
         output_format="mp3_44100_128",
