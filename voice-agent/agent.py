@@ -122,11 +122,6 @@ def run_turn(
     # Rich context injected only on the first turn
     if not history:
         personality = ""
-        if call_reason:
-            personality += (
-                f"\nWhy you're calling right now: {call_reason} — mention this "
-                f"naturally when you check in (it's the point of the call)."
-            )
         if notes:
             personality += f"\nPersonality notes: {notes}"
         if grandkids:
@@ -158,6 +153,14 @@ def run_turn(
     messages = clean_history + [{"role": "user", "content": user_content}]
 
     system = _SYSTEM
+    if call_reason:
+        system += (
+            f"\n\nTHIS CALL'S PURPOSE (the caregiver specifically asked): {call_reason}\n"
+            f"You MUST ask about this — weave it into your greeting or right after "
+            f"('I was calling to hear how the get-together went!' style). Do NOT move "
+            f"to closing until you've asked about it and heard the answer. It matters "
+            f"more than the routine medication question."
+        )
     if _learnings:
         system += "\n\nLESSONS FROM PREVIOUS CALLS (apply these):\n" + "\n".join(f"- {l}" for l in _learnings)
 

@@ -116,6 +116,7 @@ async def incoming(
         grandkid_names=grandkid_names,
     )
     session["pastCalls"] = past_calls
+    session["callReason"] = reason
 
     agent.set_learnings(judge_client.fetch_learnings())
 
@@ -166,6 +167,7 @@ async def gather(
         med_summary=session["medSummary"],
         notes=session.get("notes", ""),
         grandkid_names=session.get("grandkidNames", []),
+        call_reason=session.get("callReason", ""),
     )
 
     _update_session_from_result(CallSid, result)
