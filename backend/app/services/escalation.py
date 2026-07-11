@@ -49,7 +49,7 @@ def raise_alert(call_log_id: str, type_: str, detail: str, severity: str = "warn
 
     try:
         _twilio.messages.create(
-            to=caregiver["phone"], from_=settings.twilio_from_number, body=body
+            to=caregiver["phone"], from_=settings.sms_from, body=body
         )
         supabase().table("alerts").update({"sms_sent": True}).eq("id", alert["id"]).execute()
         alert["sms_sent"] = True
@@ -83,7 +83,7 @@ def send_digest(call_log_id: str) -> bool:
 
     try:
         _twilio.messages.create(
-            to=caregiver["phone"], from_=settings.twilio_from_number, body="\n".join(lines)
+            to=caregiver["phone"], from_=settings.sms_from, body="\n".join(lines)
         )
         supabase().table("call_logs").update({"digest_sent": True}).eq("id", call_log_id).execute()
         return True
