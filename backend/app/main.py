@@ -1,9 +1,11 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException
 from fastapi.responses import Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from twilio.rest import Client as TwilioClient
 
@@ -173,3 +175,9 @@ def status_callback(CallSid: str = Form(...), CallStatus: str = Form(...)):
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+# Caregiver portal (dashboard/ at repo root) — served last so API routes win.
+_dashboard = Path(__file__).resolve().parents[2] / "dashboard"
+if _dashboard.is_dir():
+    app.mount("/", StaticFiles(directory=_dashboard, html=True), name="dashboard")
