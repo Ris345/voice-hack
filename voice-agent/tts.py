@@ -27,7 +27,7 @@ def synthesize(text: str) -> str:
     path = AUDIO_DIR / f"{file_id}.mp3"
 
     audio_stream = _client.text_to_speech.convert(
-        voice_id="21m00Tcm4TlvDq8ikWAM",  # Rachel
+        voice_id="EXAVITQu4vr4xnSDxMaL",  # Sarah — Mature, Reassuring, Confident
         text=text,
         model_id=_MODEL,
         output_format="mp3_44100_128",

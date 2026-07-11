@@ -15,13 +15,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI, Form, Request, Response
-from fastapi.responses import PlainTextResponse
+from fastapi.background import BackgroundTasks
+from fastapi.responses import FileResponse, PlainTextResponse
 
 import agent
 import backend_client
 import judge_client
 import patients
 import sessions
+import tts
 
 app = FastAPI()
 
@@ -31,7 +33,6 @@ def startup():
 
 BASE_URL = os.environ.get("BASE_URL", "http://localhost:8000")
 GATHER_URL = f"{BASE_URL}/voice/gather"
-TTS_VOICE = "Polly.Joanna"  # warm female Polly voice, no paid plan needed
 
 
 # ---------------------------------------------------------------------------
@@ -42,15 +43,16 @@ def _twiml(xml_body: str) -> Response:
     return Response(content=xml_body, media_type="text/xml")
 
 
-def _escape(text: str) -> str:
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+def _audio_url(text: str) -> str:
+    file_id = tts.synthesize(text)
+    return f"{BASE_URL}/audio/{file_id}"
 
 
 def say_and_gather(text: str) -> str:
-    safe = _escape(text)
+    audio_url = _audio_url(text)
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="{TTS_VOICE}">{safe}</Say>
+  <Play>{audio_url}</Play>
   <Gather input="speech" action="{GATHER_URL}" method="POST"
           speechTimeout="auto" speechModel="experimental_conversations" enhanced="true">
   </Gather>
@@ -59,10 +61,10 @@ def say_and_gather(text: str) -> str:
 
 
 def say_and_hangup(text: str) -> str:
-    safe = _escape(text)
+    audio_url = _audio_url(text)
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="{TTS_VOICE}">{safe}</Say>
+  <Play>{audio_url}</Play>
   <Hangup/>
 </Response>"""
 
@@ -188,6 +190,14 @@ async def gather(
 
     return _twiml(say_and_gather(result["speech"]))
 
+
+@app.get("/audio/{file_id}")
+async def serve_audio(file_id: str, background_tasks: BackgroundTasks):
+    path = tts.AUDIO_DIR / f"{file_id}.mp3"
+    if not path.exists():
+        return PlainTextResponse("not found", status_code=404)
+    background_tasks.add_task(path.unlink, missing_ok=True)
+    return FileResponse(path, media_type="audio/mpeg")
 
 
 @app.post("/voice/status")
